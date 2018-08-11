@@ -86,6 +86,7 @@ public:
     BatchInfo* next; 
     mysize_t Node; 
     std::vector<std::pair<mysize_t, myssize_t>> ev; 
+    mysize_t getSize() { ev.size(); }
   };
 
    DistributedArrayManager* dam;

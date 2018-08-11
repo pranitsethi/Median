@@ -125,14 +125,21 @@ void
 InterNodeFlushManager::flush()
 {
 
-   // walks the BatchNodes data structure and sends maximum of one message
-   // per node to send new values. If there are no new values for a node, then
+   // walks the BatchNodes data structure and sends  a maximum of one message
+   // per node to send new values accross. If there are no new values for a node, then
    // no messages are sent to that node.
 
-
-
-
-
+   int nodes = dam->getNumNodes();
+   for(int n = 0; n < nodes; ++n) 
+    {
+      for (auto it = BatchNodes[n]->ev.begin(); it != BatchNodes[n]->ev.end(); ++it) 
+       {
+        // this encapsulates a message for all data and sends it to node 'n'
+        // a worker recieves the message and then swaps in the new values (local)
+        dam->setElement(n, it->first, it->second);
+        BatchNodes[n]->ev.erase(BatchNodes[n]->ev.begin());
+       }
+   }
 } 
 
 void
