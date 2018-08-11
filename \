@@ -1,0 +1,148 @@
+/* // TODO: COMMENTS
+ *
+ *
+*/
+
+
+#include<Median_Engine.h> 
+
+
+
+bool 
+Validation::validateInputs(int Nodes, int arraySize) 
+{ 
+      if (!Nodes) {
+
+         printf("You have entered %d node\n", Nodes); 
+         printf("We need at least 1 to continue; please try again\n");
+         return false;
+
+       } else if (Nodes == 1) { 
+
+        printf("You have entered %d Node\n", Nodes); 
+
+        } else { 
+
+        printf("You have entered %d Nodes\n", Nodes); 
+      }
+
+      if (!arraySize) {
+
+         printf("You have entered %d size array\n", arraySize); 
+         printf("We need at least 1 element in each array to continue; please try again\n");
+         return false;
+
+       } else if (arraySize == 1) { 
+
+        printf("You have entered each array with %d element\n", arraySize); 
+
+       } else { 
+
+        printf("You have entered each array with %d number of elements\n", arraySize); 
+      }
+
+      return true;
+
+}
+
+DistributedArrayManager::DistributedArrayManager(int Nodes, int numElements): numNodes(Nodes), totalElements(Nodes * numElements) 
+{
+
+
+        nodesArray = new int*[numNodes];
+        if (!nodesArray) { 
+           // TODO: deal with the alloc failure
+        }
+
+       for (int i = 0; i < Nodes; ++i) 
+       {
+           // create numNodes arrays 
+          nodesArray[i] = new int[numElements]; 
+          if (!nodesArray[i]) { 
+
+           // TODO: deal with the alloc failure
+          }
+       }
+
+}
+
+void
+DistributedArrayManager::printAllArrays() 
+{
+
+     for (int n = 0; n < numNodes; n++) {
+	printf("\nelements of %d array\n", n + 1);
+	for (int j = 0; j < totalElements/numNodes; ++j) {
+	  printf("%d  ", getElement(n, j));
+	}
+     }
+}
+
+
+InterNodeFlushManager::InterNodeFlushManager(DistributedArrayManager* dam) {
+
+
+     int nodes = dam->getNumNodes();
+     BatchNodes = new BatchInfo*[nodes];
+     if (!BatchNodes) { 
+        // TODO: deal with the error
+     } 
+
+
+}
+
+
+int 
+DistributedMedian::quickSelect(int median) 
+{ 
+} 
+           
+int main(int argc, char **argv) 
+{
+
+     int numNodes, numElements;
+     printf("please enter number of nodes\n"); 
+     scanf("%d", &numNodes);
+     printf("please enter number of elements or size (all arrays will be same size)\n"); 
+     scanf("%d", &numElements);
+     if (!Validation::validateInputs(numNodes, numElements)) 
+        return -1;
+
+     // validation test passed 
+     // create a DAM (Distributed Array Manager) and 
+     // enter elements into arrays
+
+     DistributedArrayManager* Dam = new DistributedArrayManager(numNodes, numElements);
+     if(!Dam) { 
+
+       // memory allocation failed
+       printf("Unable to allocate DistributedArrayManager\n");
+       return -1; 
+
+     } 
+    
+
+     printf("lets enter elements of each array\n");
+     for (int n = 0; n < numNodes; n++) {
+	printf("lets enter elements of %d array, space separated\n", n + 1);
+        int element;
+	for (int j = 0; j < numElements; ++j) {
+            scanf("%d", &element);
+            //Dam->setElement(Node, index, element));
+            Dam->setElement(n, j, element);
+	}
+     }
+
+     Dam->printAllArrays();
+
+
+
+     printf("\nWelcome to the median engine\n"); 
+
+     // quickSelect; median of medians if necessary
+
+
+     return 0;
+
+}
+    
