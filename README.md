@@ -14,7 +14,7 @@ Goals:
 * run time: O(n)
 * memory : O(1) (other than memory for existing array's) 
 * efficient (batch) exchange of information & numbers between nodes
-* 
+* eliminate tail recursion (if it applies)
 
 	
 lorenzhs on Mar 11, 2017 [-]

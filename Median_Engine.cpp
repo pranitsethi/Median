@@ -6,7 +6,7 @@
 
 #include<Median_Engine.h> 
 
-
+using namespace std;
 
 bool 
 Validation::validateInputs(mysize_t Nodes, mysize_t arraySize) 
@@ -65,6 +65,8 @@ DistributedArrayManager::DistributedArrayManager(mysize_t Nodes, mysize_t numEle
        }
 
       numElementsPerArray = numElements;
+      infm = new InterNodeFlushManager(this);
+      distrMedian = new DistributedMedian(this, infm);
 }
 
 void
@@ -73,22 +75,32 @@ DistributedArrayManager::printAllArrays()
 
      for (mysize_t n = 0; n < numNodes; n++) {
 	printf("\nelements of %d array\n", n + 1);
-	for (mysize_t j = 0; j < totalElements/numNodes; ++j) {
+	for (mysize_t j = 0; j < numElementsPerArray; ++j) {
 	  printf("%d  ", getElement(n, j));
 	}
      }
+	printf("\n\n");
 }
 
 
-InterNodeFlushManager::InterNodeFlushManager(DistributedArrayManager* dam) 
+InterNodeFlushManager::InterNodeFlushManager(DistributedArrayManager* d) : dam(d) 
 
 {
 
      mysize_t nodes = dam->getNumNodes();
+    printf("INFM: got %d nodes\n", nodes); 
      //BatchNodes = new BatchInfo**[nodes]; // Time permitting; more elaborate per node BatchNode
      BatchNodes = new BatchInfo*[nodes];
-     if (!BatchNodes) { 
+     if (!BatchNodes) {
         // TODO: deal with the error
+     }
+
+     for (mysize_t i = 0; i < nodes; ++i) { 
+
+         BatchNodes[i] = new BatchInfo(i);
+         if (!BatchNodes[i]) {
+          // TODO: deal with the error
+         }
      }
 
      // commented out: this would be even a more elaborate approach where there would be a 
@@ -112,13 +124,31 @@ InterNodeFlushManager::swapValues(mysize_t index1, mysize_t index2)
 
     // goal: take value from index1 (say node1) and take value from index2 (say node2) and send them to the
     // other node with new index (async distributed swap).
+    if (index1 == index2) { 
+        printf("swapValues: Not queuing index1 %d, index2 %d - they are same\n", index1, index2); 
+        return;
+    }
+    printf("swapValues: index1 %d, index2 %d\n", index1, index2); 
 
     mysize_t element1 = dam->getElementAtIndex(index1); // takes advantage of read ahead
     mysize_t element2 = dam->getElementAtIndex(index2);
+    printf("swapValues: got values element1 %d, element2 %d\n", element1, element2); 
 
     queuePair(index2, element1); // indexes and values swapped
     queuePair(index1, element2);
 
+}
+
+void
+InterNodeFlushManager::queuePair(mysize_t index, myssize_t element)
+{
+
+   // queue up the element to swap
+   // flush will get to all the elements destined for a node
+
+    mysize_t node = dam->getNode(index);
+    BatchNodes[node]->ev.push_back(std::make_pair(index, element));
+    printf("queuePair: index %d, element %d, node %d, szv %lu\n", index, element, node, BatchNodes[node]->ev.size()); 
 }
 
 void
@@ -132,13 +162,18 @@ InterNodeFlushManager::flush()
    int nodes = dam->getNumNodes();
    for(int n = 0; n < nodes; ++n) 
     {
-      for (auto it = BatchNodes[n]->ev.begin(); it != BatchNodes[n]->ev.end(); ++it) 
+      vector<std::pair<mysize_t, myssize_t>>::iterator it;
+      //for (it = BatchNodes[n]->ev.begin(); it != BatchNodes[n]->ev.end(); ++it) 
+      while (BatchNodes[n]->ev.size())
        {
+        it = BatchNodes[n]->ev.begin();
         // this encapsulates a message for all data and sends it to node 'n'
         // a worker recieves the message and then swaps in the new values (local)
-        dam->setElement(n, it->first, it->second);
+        printf("flush found index %d, element %d, node %d, szv %lu\n", it->first, it->second, n, BatchNodes[n]->ev.size()); 
+        dam->setElement(it->first, it->second);
         BatchNodes[n]->ev.erase(BatchNodes[n]->ev.begin());
        }
+       assert(BatchNodes[n]->ev.size() == 0);
    }
 } 
 
@@ -152,46 +187,93 @@ DistributedMedian::exch(mysize_t index1, mysize_t index2)
 }
 
 mysize_t 
-DistributedMedian::partition() 
+DistributedMedian::partition(mysize_t left, mysize_t right) 
 {
    // classic parition
+   // randomly chooses to partition with the last element
    mysize_t i = left - 1, j = right; myssize_t v = dam->getElementAtIndex(right);
+   printf("partition i %d, j %d element %d\n", i,j, v); 
    for(;;)
-    { 
+    {
+ 
      while (dam->getElementAtIndex(++i) < v) ; 
      while (v < dam->getElementAtIndex(--j)) if (j == left) break;
      if (i >= j) break;
-        //exch(dam->elementAtIndex(i), dam->elementAtIndex(j)); 
-        exch(i, j); 
+     exch(i, j); 
     }
-     //exch(dam->elementAtIndex(i), dam->elementAtIndex(right)); 
-     exch(i, right); 
+   exch(i, right);
 
    infm->flush(); // TODO: can this be further delayed? (upto one message to each node possible here)
 
+   printf("returning pivot %d\n", i); 
    return i; // pivot
 }
+
+
+mysize_t
+DistributedMedian::quickSelect() 
+{
+    // correctness: even or odd sized array TODO
+    // random selection of pivot (last element or something else)
+    // iterative to eliminate tail recursion
+
+    mysize_t left = 0; 
+    mysize_t right = dam->getTotalElements() - 1;
+    mysize_t median = (right + 1)/ 2;
+    mysize_t pivotIndex = right;
+    printf("enter quick select r %d, m %d, pi %d\n", right, median, pivotIndex); 
+
+    while (right > left) {
+    
+        pivotIndex = partition(left, right);
+        if (pivotIndex >= median) right = pivotIndex - 1; 
+        if (pivotIndex <= median) left  = pivotIndex + 1; 
+    }
+
+    if (dam->getTotalElements() % 2 == 0) { 
+       return (dam->getElementAtIndex(pivotIndex - 1) + dam->getElementAtIndex(pivotIndex)) / 2; 
+    } else { 
+        return dam->getElementAtIndex(pivotIndex);
+    } 
+}
+
+
  
-mysize_t 
+/*mysize_t 
 DistributedMedian::quickSelect() 
 {
 
     // correctness: even or odd sized array TODO
-    // random selection of pivot
+    // random selection of pivot (last element or something else)
+    // iterative to eliminate tail recursion
+
+    mysize_t left = 0; 
+    mysize_t right = dam->getTotalElements() - 1;
+    mysize_t median = (right + 1)/ 2;
+    mysize_t pivotIndex = right;
+    printf("enter quick select r %d, m %d, pi %d\n", right, median, pivotIndex); 
     
-     /*loop
-         if left = right
-             return list[left]
-         pivotIndex := left + floor(rand() % (right - left + 1));     // randomly select pivotIndex between left and right (TODO: text)
-         pivotIndex := partition(list, left, right, pivotIndex)
-         if k = pivotIndex
-             return list[k]
-         else if k < pivotIndex
-             right := pivotIndex - 1
+     //loop
+     while (pivotIndex != median) {
+     
+         if (left == right)
+             return dam->getElementAtIndex(left);
+         //pivotIndex = left + floor(rand() % (right - left + 1));     // randomly select pivotIndex between left and right (TODO: text)
+         pivotIndex = partition(left, right);
+         if (median == pivotIndex)
+             return dam->getElementAtIndex(pivotIndex);
+         else if (median < pivotIndex)
+             right = pivotIndex - 1;
          else
-             left := pivotIndex + 1
-     */
-}
+             left = pivotIndex + 1;
+     }
+
+     if (dam->getTotalElements() % 2 == 0) { 
+        return (dam->getElementAtIndex(pivotIndex - 1) + dam->getElementAtIndex(pivotIndex)) / 2; 
+     } else { 
+         return dam->getElementAtIndex(pivotIndex);
+     } 
+}*/
 
            
 int main(int argc, char **argv) 
@@ -207,7 +289,7 @@ int main(int argc, char **argv)
 
      // validation test passed 
      // create a DAM (Distributed Array Manager) and 
-     // enter elements mysize_to arrays
+     // enter elements into N arrays
 
      DistributedArrayManager* Dam = new DistributedArrayManager(numNodes, numElements);
      if(!Dam) { 
@@ -225,8 +307,8 @@ int main(int argc, char **argv)
         mysize_t element;
 	for (mysize_t j = 0; j < numElements; ++j) {
             scanf("%d", &element);
-            //Dam->setElement(Node, index, element));
             Dam->setElement(n, j, element);
+            //Dam->setElement(j, element);
 	}
      }
 
@@ -236,7 +318,11 @@ int main(int argc, char **argv)
 
      printf("\nWelcome to the median engine\n"); 
 
-     // quickSelect; median of medians if necessary
+     int median = Dam->findMedian();
+
+     printf("\n median found is %d\n", median); 
+
+     Dam->printAllArrays();
 
 
      return 0;

@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++0x -O0 -I.
+CXXFLAGS = -std=c++0x -O0 -ggdb -I.
 DEPS = Median_Engine.h
 OBJ =  Median_Engine.o 
 
