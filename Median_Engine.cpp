@@ -453,7 +453,7 @@ DistributedMedian::medianOfMedians(vector<mysize_t>& vec, mysize_t k, mysize_t s
 }
 
 double
-DistributedMedian::medianOfMediansFinal(vector<mysize_t>& vec, mysize_t k, mysize_t start, mysize_t end)
+DistributedMedian::medianOfMediansFinal(vector<mysize_t>& vec, mysize_t k, mysize_t start, mysize_t end, bool mom)
 {
    // recursive method (watch out for the recursive depth here)
    // don't blow the stack! (add bounds check (check stack size on stacking every new
@@ -464,7 +464,11 @@ DistributedMedian::medianOfMediansFinal(vector<mysize_t>& vec, mysize_t k, mysiz
    // base case
    if(end - start < 10) {
       insertionSortDistributed(start, end);
-      return dam->getElementAtIndex(k);
+      printf("GOT KMEDIAN MoM %d\n", k);  // TODO: REMOVE
+      if (mom) 
+        return vec.at(k);
+      else 
+        return dam->getElementAtIndex(k);
     }
     
     vector<mysize_t> medians;
@@ -482,7 +486,7 @@ DistributedMedian::medianOfMediansFinal(vector<mysize_t>& vec, mysize_t k, mysiz
         }
     }
     
-    mysize_t median = medianOfMediansFinal(medians, medians.size()/2, 0, medians.size());
+    mysize_t median = medianOfMediansFinal(medians, medians.size()/2, 0, medians.size(), true);
     
     printf("GOT MEDIAN MoM %d\n", median);  // TODO: REMOVE
     dam->printAllArrays(); // TODO: REMOVE
@@ -490,15 +494,18 @@ DistributedMedian::medianOfMediansFinal(vector<mysize_t>& vec, mysize_t k, mysiz
     int piv = partition(start, end, median);
     int length = piv - start + 1;
     
-    if(k < length){
+    if(k < length) {
+        //assert(0);
         return medianOfMediansFinal(vec, k, start, piv);
     }
     else if(k > length){
+        //assert(0);
         return medianOfMediansFinal(vec, k-length, piv+1, end);
     }
-    else
-        return dam->getElementAtIndex(k);
-
+    else {
+        //assert(0);
+        return checkForMedian(k); //dam->getElementAtIndex(k);
+     }
 }
            
 int main(int argc, char **argv) 

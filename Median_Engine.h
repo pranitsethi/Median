@@ -60,7 +60,7 @@ public:
      double   quickSelect(); 
      double   quickSelect2(); 
      double medianOfMedians(vector<mysize_t>&, mysize_t k, mysize_t left, mysize_t right); 
-     double medianOfMediansFinal(vector<mysize_t>&, mysize_t k, mysize_t left, mysize_t right); 
+     double medianOfMediansFinal(vector<mysize_t>&, mysize_t k, mysize_t left, mysize_t right, bool mom = false); 
      mysize_t partition(mysize_t left, mysize_t right, mysize_t pivotIndex=0);
      void     exch(mysize_t index1, mysize_t index2);
      void     compexchsimple(myssize_t element1, myssize_t element2);
