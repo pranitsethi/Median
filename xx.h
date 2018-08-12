@@ -15,8 +15,6 @@
 #include <iostream>
 #include <assert.h>
 
-using namespace std;
-
 // OVERFLOWS
 // lets declare two typedefs to handle overflows
 // if this program is used for very large sized arrays and nodes then 
@@ -37,7 +35,7 @@ class Validation {
   // class used to validate the inputs
 
 public:
-   bool static validateInputs(mysize_t N, mysize_t elementCount);
+          bool static validateInputs(mysize_t N, mysize_t elementCount);
 };
 
 /* 
@@ -58,17 +56,11 @@ public:
  
      DistributedMedian(DistributedArrayManager* d, InterNodeFlushManager* fm): dam(d), infm(fm) { }
      double   quickSelect(); 
-     double   quickSelect2(); 
-     double medianOfMedians(vector<mysize_t>&, mysize_t k, mysize_t left, mysize_t right); 
-     double medianOfMediansFinal(vector<mysize_t>&, mysize_t k, mysize_t left, mysize_t right); 
-     mysize_t partition(mysize_t left, mysize_t right, mysize_t pivotIndex=0);
+     mysize_t medianOfMedians(); 
+     mysize_t partition(mysize_t left, mysize_t right);
      void     exch(mysize_t index1, mysize_t index2);
-     void     compexchsimple(myssize_t element1, myssize_t element2);
      void     compexch(mysize_t index1, mysize_t index2);
-     void     insertionSortDistributed(mysize_t left_index, mysize_t right_index); // indexes
-     void     medianInsertionSortDistributed();
-     void     insertionSortSimple();
-     double   checkForMedian(mysize_t index);
+     void     insertionSort();
 };
 
 
@@ -90,15 +82,16 @@ class DistributedArrayManager {
 public: 
 
     DistributedArrayManager(mysize_t Nodes, mysize_t numElements);
-    void      setElement(mysize_t index, myssize_t element);  // goes through the cache
-    void      setElementFlush(mysize_t index, myssize_t element); // goes direct (ONLY called by cache flush or input-init) 
-    myssize_t getElement(mysize_t index);
-    bool      checkCache(mysize_t index);
+    void      setElement(mysize_t index, myssize_t element) { myssize_t* nArray = nodesArray[getNode(index)]; mysize_t rindex = index - getNode(index) * numElementsPerArray; nArray[rindex] = element; }
+    myssize_t getElement(mysize_t index) { myssize_t* nArray = nodesArray[getNode(index)]; mysize_t rindex = index - getNode(index) * numElementsPerArray; return nArray[rindex]; }
     void      printAllArrays();
+    mysize_t  getElement(mysize_t node, mysize_t rindex) { myssize_t* nArray = nodesArray[node]; return nArray[rindex]; }
+    mysize_t  setElement(mysize_t node, mysize_t rindex, myssize_t element) { myssize_t* nArray = nodesArray[node]; nArray[rindex] = element; }
     mysize_t  getNumNodes() { return numNodes; }
     mysize_t  getNode(mysize_t index) { return index/numElementsPerArray; }
     mysize_t  getTotalElements() { return totalElements; }
-    myssize_t getElementAtIndex(mysize_t index) { assert (index >= 0 && index < totalElements); return getElement(index); } // TODO: use batchManager to read a bunch of entries at once (read ahead):  especially for partition() 
+    myssize_t getElementAtIndex(mysize_t index) { return getElement(index); } // TODO: use batchManager to read a bunch of entries at once (read ahead):  especially for partition() 
+    //double   findMedian() { /* !inline TODO MoM */ return distributedMedian->quickSelect(); }
     double   findMedian(); 
 
 
@@ -140,7 +133,6 @@ public:
    void swapValues(mysize_t src_index, mysize_t dest_index); // async: queues it up and passes a batch message eventually
 // void queuePair(mysize_t index, myssize_t element) { BatchNodes[dam->getNode(index)]->ev.push_back(std::make_pair(index, element)); }
    void queuePair(mysize_t index, myssize_t element);
-   bool checkCache(mysize_t index, myssize_t& element);
 
 };
 
@@ -152,14 +144,12 @@ public:
  * N elements to cache. We can implement a LRU cache eviction.
  * For cache and element coherency, the element must be removed (or updated) from here if it's swapped
  * or some other action and moved to the InterNodeFlushManager cache. Combining the two (ReadAheadCache and
- * InterNodeFlushManager) is a possiblity but it might lead to complications and complicated logic (for starters
- * would need a state bit to identify whether an element is dirty to be picked up by the flush manager)
+ * InterNodeFlushManager) is a possiblity but it might lead to complications and complicated logic.
  */
 
 class ReadAheadCache { 
 
 
-   // memory threshold (LRU eviction policy)
     const static mysize_t N = 10; // tweak: how much memory is availiable?
 
 public: 
@@ -179,8 +169,5 @@ public:
 // git: clean up 
 // indentation
 // insertion sort
-// read ahead cache (getElementAtIndex(x)): constraint (memory on controller node: memory threshold)
-// -- lookup flush manager cache
-// -- update index if it exists (or for now just append)
+// read ahead cache (getElementAtIndex(x)): constraint (memory on controller node)
 // statisic generator (InterNode messages) 
-// TESTING: auto array element generator

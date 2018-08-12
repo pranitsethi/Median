@@ -6,6 +6,7 @@ Asssumptions:
 * duplicates are possible
 * no idea about range of numbers
 * numbers are signed integers
+* almost no memory availiable on nodes (other than to hold the arrays)
 
 Goals: 
 ------

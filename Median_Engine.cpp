@@ -66,7 +66,7 @@ DistributedArrayManager::DistributedArrayManager(mysize_t Nodes, mysize_t numEle
 
       numElementsPerArray = numElements;
       infm = new InterNodeFlushManager(this);
-      distrMedian = new DistributedMedian(this, infm);
+      distributedMedian = new DistributedMedian(this, infm);
 }
 
 void
@@ -76,15 +76,57 @@ DistributedArrayManager::printAllArrays()
      for (mysize_t n = 0; n < numNodes; n++) {
 	printf("\nelements of %d array\n", n + 1);
 	for (mysize_t j = 0; j < numElementsPerArray; ++j) {
-	  printf("%d  ", getElement(n, j));
+	  printf("%d  ", getElement((n*numElementsPerArray) + j));
 	}
      }
 	printf("\n\n");
 }
 
+double
+DistributedArrayManager::findMedian() 
+{
+
+    //return distributedMedian->quickSelect();
+    vector<mysize_t> dummyVector;
+    mysize_t median = getTotalElements()/2; 
+    return distributedMedian->medianOfMedians(dummyVector, median, 0, getTotalElements() - 1);
+}
+
+void 
+DistributedArrayManager::setElementFlush(mysize_t index, myssize_t element) 
+{ 
+   myssize_t* nArray = nodesArray[getNode(index)]; 
+   mysize_t rindex = index - getNode(index) * numElementsPerArray; 
+   nArray[rindex] = element; 
+}
+
+void
+DistributedArrayManager::setElement(mysize_t index, myssize_t element)
+{ 
+   // ONLY sets the cache
+   infm->queuePair(index, element);
+}
+
+myssize_t 
+DistributedArrayManager::getElement(mysize_t index) 
+{
+
+   // always looks into the cache first
+   // if found, returns from the cache (saves a node round trip -- 
+   // read from the node -- will be a bulk read ahead)
+   bool found = false; 
+   int element;
+   if (infm->checkCache(index, element)) { 
+      // found in the cache
+     return element;
+    } 
+
+   myssize_t* nArray = nodesArray[getNode(index)]; 
+   mysize_t rindex = index - getNode(index) * numElementsPerArray; 
+   return nArray[rindex];
+}
 
 InterNodeFlushManager::InterNodeFlushManager(DistributedArrayManager* d) : dam(d) 
-
 {
 
      mysize_t nodes = dam->getNumNodes();
@@ -139,6 +181,24 @@ InterNodeFlushManager::swapValues(mysize_t index1, mysize_t index2)
 
 }
 
+bool
+InterNodeFlushManager::checkCache(mysize_t index, myssize_t& element)
+{
+    mysize_t node = dam->getNode(index);
+    vector<std::pair<mysize_t, myssize_t>>::iterator it;
+    for (it = BatchNodes[node]->ev.begin(); it != BatchNodes[node]->ev.end(); ++it) {
+
+           if (it->first == index) { 
+             // found the pair in the list
+             // there can only be one such pair for that index in the list
+              printf("queuePair: check index %d, element %d, node %d, szv %lu\n", it->first, it->second, node, BatchNodes[node]->ev.size()); 
+             element = it->second;
+             return true;
+            }
+    }
+   return false;
+}
+
 void
 InterNodeFlushManager::queuePair(mysize_t index, myssize_t element)
 {
@@ -147,7 +207,24 @@ InterNodeFlushManager::queuePair(mysize_t index, myssize_t element)
    // flush will get to all the elements destined for a node
 
     mysize_t node = dam->getNode(index);
-    BatchNodes[node]->ev.push_back(std::make_pair(index, element));
+    bool found = false; 
+    vector<std::pair<mysize_t, myssize_t>>::iterator it;
+    for (it = BatchNodes[node]->ev.begin(); it != BatchNodes[node]->ev.end(); ++it) {
+
+           if (it->first == index) { 
+             // found the pair in the list; just update it (saves memory)
+              printf("queuePair: found index %d, element %d, node %d, szv %lu\n", it->first, it->second, node, BatchNodes[node]->ev.size()); 
+              printf("queuePair: Updated to index %d, element %d, node %d, szv %lu\n", index, element, node, BatchNodes[node]->ev.size()); 
+             it->second = element; 
+             found = true;
+             break;
+            }
+    }
+
+    if (!found)
+        BatchNodes[node]->ev.push_back(std::make_pair(index, element));
+
+    
     printf("queuePair: index %d, element %d, node %d, szv %lu\n", index, element, node, BatchNodes[node]->ev.size()); 
 }
 
@@ -163,19 +240,53 @@ InterNodeFlushManager::flush()
    for(int n = 0; n < nodes; ++n) 
     {
       vector<std::pair<mysize_t, myssize_t>>::iterator it;
-      //for (it = BatchNodes[n]->ev.begin(); it != BatchNodes[n]->ev.end(); ++it) 
       while (BatchNodes[n]->ev.size())
        {
         it = BatchNodes[n]->ev.begin();
         // this encapsulates a message for all data and sends it to node 'n'
         // a worker recieves the message and then swaps in the new values (local)
+        // TODO: would also update the readAheadCache eventually (or only that if under memory threshold)
         printf("flush found index %d, element %d, node %d, szv %lu\n", it->first, it->second, n, BatchNodes[n]->ev.size()); 
-        dam->setElement(it->first, it->second);
+        dam->setElementFlush(it->first, it->second);
         BatchNodes[n]->ev.erase(BatchNodes[n]->ev.begin());
        }
        assert(BatchNodes[n]->ev.size() == 0);
    }
-} 
+}
+
+void
+DistributedMedian::insertionSortDistributed(mysize_t left, mysize_t right)
+{
+
+    dam->printAllArrays();
+    //mysize_t left = 0; 
+    //mysize_t right = dam->getTotalElements() - 1;
+    int i;
+    for(i = right; i > left; i--) compexch(i-1, i);
+    dam->printAllArrays();
+    for(i = left + 2; i <= right; i++) {
+        int j = i; mysize_t v = dam->getElementAtIndex(i); // low cost
+        while (j > 0 && v < dam->getElementAtIndex(j-1))
+        { dam->setElement(j, dam->getElementAtIndex(j-1)); j--; } 
+       dam->setElement(j, v);
+    dam->printAllArrays();
+    }
+    infm->flush();
+    dam->printAllArrays();
+}
+
+/*void
+DistributedMedian::insertionSortSimple(vector<mysize_t>& vec, mysize_t l, mysize_t r )
+{
+    int i;
+    for(i = r; i > l; i--) compexchsimple(vec[i-1], vec[i]); // TODO: vector
+    for(i = l + 2; i <= r; i++) {
+        int j = i; mysize_t v = vec(i); // TODO: vec
+        while (v < vec(j-1)) // TODO: vec
+        { vec(j) = vec(j - 1); j--; } 
+        vec(j) = v;
+    }
+}*/
 
 void
 DistributedMedian::exch(mysize_t index1, mysize_t index2) 
@@ -186,19 +297,38 @@ DistributedMedian::exch(mysize_t index1, mysize_t index2)
    infm->swapValues(index1, index2);
 }
 
+void
+DistributedMedian::compexch(mysize_t index1, mysize_t index2)
+{
+
+    if (dam->getElementAtIndex(index2) < dam->getElementAtIndex(index1))
+        exch(index1, index2);
+
+}
+
 mysize_t 
-DistributedMedian::partition(mysize_t left, mysize_t right) 
+DistributedMedian::partition(mysize_t left, mysize_t right, mysize_t pivotIndex) 
 {
    // classic parition
+   mysize_t i = left - 1, j = right; 
+   mysize_t v;
+
+   if (pivotIndex) {
+      // median of medians sends in a pivotIndex
+      v = dam->getElementAtIndex(pivotIndex);
+    } else {
    // randomly chooses to partition with the last element
-   mysize_t i = left - 1, j = right; myssize_t v = dam->getElementAtIndex(right);
+      v = dam->getElementAtIndex(right);
+   }
+
    printf("partition i %d, j %d element %d\n", i,j, v); 
    for(;;)
     {
  
      while (dam->getElementAtIndex(++i) < v) ; 
-     while (v < dam->getElementAtIndex(--j)) if (j == left) break;
+     while (j > 0 && v < dam->getElementAtIndex(--j)) if (j == left) break;
      if (i >= j) break;
+     else if(dam->getElementAtIndex(i) == dam->getElementAtIndex(j)) {++i; continue;} // duplicate elements
      exch(i, j); 
     }
    exch(i, right);
@@ -213,7 +343,6 @@ DistributedMedian::partition(mysize_t left, mysize_t right)
 double
 DistributedMedian::quickSelect() 
 {
-    // correctness: even or odd sized array TODO
     // random selection of pivot (last element or something else)
     // iterative to eliminate tail recursion
 
@@ -230,19 +359,11 @@ DistributedMedian::quickSelect()
         if (pivotIndex <= median) left  = pivotIndex + 1; 
     }
 
-    if (dam->getTotalElements() % 2 == 0) { 
-       int i = dam->getElementAtIndex(pivotIndex - 1);
-       int k = dam->getElementAtIndex(pivotIndex );
-       double j = (i + k)/2.;
-       printf("even elements pi %d, i %d, k %d, median %lf\n", pivotIndex,i, k, j); //TODO: REMOVE
-       return j;
-    } else { 
-        return dam->getElementAtIndex(pivotIndex);
-    } 
+   return checkForMedian(pivotIndex);
 }
 
 /*mysize_t 
-DistributedMedian::quickSelect() 
+DistributedMedian::quickSelect2() 
 {
 
     // correctness: even or odd sized array TODO
@@ -277,6 +398,108 @@ DistributedMedian::quickSelect()
      } 
 }*/
 
+/*
+mysize_t
+DistributedMedian::getMedian5(vector<int>& vec, int k, int start, int end)
+{
+
+     if(end-start < 10){
+        sort(vec.begin()+start, vec.begin()+end);
+        return vec.at(k);
+    }
+    
+    vector<mysize_t> medians;
+    for(mysize_t i = start; i < end; i+=5){
+        if(end - i < 10){
+            sort(vec.begin()+i, vec.begin()+end);
+            medians.push_back(vec.at((i+end)/2));
+        }
+        else{
+            sort(vec.begin()+i, vec.begin()+i+5);
+            medians.push_back(vec.at(i+2));
+        }
+    }
+    
+    int median = getMedian5(medians, medians.size()/2, 0, medians.size());
+}*/
+
+double 
+DistributedMedian::checkForMedian(mysize_t pivotIndex)
+{
+
+    if (dam->getTotalElements() % 2 == 0) { 
+       int i = dam->getElementAtIndex(pivotIndex - 1);
+       int k = dam->getElementAtIndex(pivotIndex );
+       double j = (i + k)/2.;
+       printf("even elements pi %d, i %d, k %d, median %lf\n", pivotIndex,i, k, j); //TODO: REMOVE
+       return j;
+    } 
+    return dam->getElementAtIndex(pivotIndex);
+}
+
+
+
+double
+DistributedMedian::medianOfMedians(vector<mysize_t>& vec, mysize_t k, mysize_t start, mysize_t end)
+{
+  // if the data set is small, sort it and return the median
+   if(end - start < 10) {
+      insertionSortDistributed(start, end);
+      return checkForMedian(k);
+   }
+
+   return medianOfMediansFinal(vec, k, start, end);
+
+}
+
+double
+DistributedMedian::medianOfMediansFinal(vector<mysize_t>& vec, mysize_t k, mysize_t start, mysize_t end)
+{
+   // recursive method (watch out for the recursive depth here)
+   // don't blow the stack! (add bounds check (check stack size on stacking every new
+   // frame on the stack) -- TODO: get stack size).
+
+    printf("enter MoM l, %d, r %d, m %d\n", start, end, k);  // TODO: REMOVE
+
+   // base case
+   if(end - start < 10) {
+      insertionSortDistributed(start, end);
+      return dam->getElementAtIndex(k);
+    }
+    
+    vector<mysize_t> medians;
+    /* sort every consecutive 5 */
+    for(mysize_t i = start; i < end; i+=5){
+        if(end - i < 10){
+            insertionSortDistributed(i, end);
+            medians.push_back(dam->getElementAtIndex((i+end)/2));
+        }
+        else{
+            insertionSortDistributed(i, i+5);
+
+            dam->printAllArrays(); // TODO: REMOVE
+            medians.push_back(dam->getElementAtIndex(i+2));
+        }
+    }
+    
+    mysize_t median = medianOfMediansFinal(medians, medians.size()/2, 0, medians.size());
+    
+    printf("GOT MEDIAN MoM %d\n", median);  // TODO: REMOVE
+    dam->printAllArrays(); // TODO: REMOVE
+    /* use the median to pivot around */
+    int piv = partition(start, end, median);
+    int length = piv - start + 1;
+    
+    if(k < length){
+        return medianOfMediansFinal(vec, k, start, piv);
+    }
+    else if(k > length){
+        return medianOfMediansFinal(vec, k-length, piv+1, end);
+    }
+    else
+        return dam->getElementAtIndex(k);
+
+}
            
 int main(int argc, char **argv) 
 {
@@ -309,7 +532,7 @@ int main(int argc, char **argv)
         mysize_t element;
 	for (mysize_t j = 0; j < numElements; ++j) {
             scanf("%d", &element);
-            Dam->setElement(n, j, element);
+            Dam->setElementFlush( (n * numElements) + j, element);
             //Dam->setElement(j, element);
 	}
      }
