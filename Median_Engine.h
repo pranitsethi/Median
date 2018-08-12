@@ -54,7 +54,7 @@ public:
  
      //DistributedMedian(DistributedArrayManager* d, InterNodeFlushManager* fm): dam(d), infm(fm), left(0){ right = dam->getTotalElements() - 1 ; }
      DistributedMedian(DistributedArrayManager* d, InterNodeFlushManager* fm): dam(d), infm(fm) { }
-     mysize_t quickSelect(); 
+     double quickSelect(); 
      mysize_t medianOfMedians(); 
      mysize_t partition(mysize_t left, mysize_t right);
      void     exch(mysize_t index1, mysize_t index2); // TODO: route via batch manager
@@ -88,7 +88,7 @@ public:
     mysize_t  getNode(mysize_t index) { return index/numElementsPerArray; }
     mysize_t  getTotalElements() { return totalElements; }
     myssize_t getElementAtIndex(mysize_t index) { return getElement(index); } // TODO: use batchManager to read a bunch of entries at once (read ahead):  especially for partition() 
-    mysize_t   findMedian() { /* !inline TODO MoM */ return distrMedian->quickSelect(); }
+    double   findMedian() { /* !inline TODO MoM */ return distrMedian->quickSelect(); }
 
 
     friend class InterNodeFlushManager;
@@ -135,7 +135,7 @@ public:
 
 
 // TODO
-// qS
+// qS (with 3)
 // use Double when total array size is even (n + n+1/2)
 // MoM 
 // policy: cut over from qS to Mom

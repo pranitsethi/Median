@@ -210,7 +210,7 @@ DistributedMedian::partition(mysize_t left, mysize_t right)
 }
 
 
-mysize_t
+double
 DistributedMedian::quickSelect() 
 {
     // correctness: even or odd sized array TODO
@@ -231,14 +231,16 @@ DistributedMedian::quickSelect()
     }
 
     if (dam->getTotalElements() % 2 == 0) { 
-       return (dam->getElementAtIndex(pivotIndex - 1) + dam->getElementAtIndex(pivotIndex)) / 2; 
+       int i = dam->getElementAtIndex(pivotIndex - 1);
+       int k = dam->getElementAtIndex(pivotIndex );
+       double j = (i + k)/2.;
+       printf("even elements pi %d, i %d, k %d, median %lf\n", pivotIndex,i, k, j); //TODO: REMOVE
+       return j;
     } else { 
         return dam->getElementAtIndex(pivotIndex);
     } 
 }
 
-
- 
 /*mysize_t 
 DistributedMedian::quickSelect() 
 {
@@ -318,9 +320,9 @@ int main(int argc, char **argv)
 
      printf("\nWelcome to the median engine\n"); 
 
-     int median = Dam->findMedian();
+     double median = Dam->findMedian();
 
-     printf("\n median found is %d\n", median); 
+     printf("\n median found is %lf\n", median); 
 
      Dam->printAllArrays();
 
