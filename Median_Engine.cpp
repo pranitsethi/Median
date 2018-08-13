@@ -40,6 +40,7 @@ Validation::validateInputs(mysize_t Nodes, mysize_t arraySize)
 
         printf("You have entered each array with %d number of elements\n", arraySize); 
       }
+      printf("\n"); 
 
       return true;
 
@@ -67,6 +68,12 @@ DistributedArrayManager::DistributedArrayManager(mysize_t Nodes, mysize_t numEle
       numElementsPerArray = numElements;
       infm = new InterNodeFlushManager(this);
       distributedMedian = new DistributedMedian(this, infm);
+      rac = new ReadAheadCache(this, infm);
+
+#ifdef VALIDATION_ENABLED
+      // medianValidate = new myssize_t[Nodes*numElements]; //TODO: REMOVE
+#endif
+
 }
 
 void
@@ -86,6 +93,8 @@ double
 DistributedArrayManager::findMedian() 
 {
 
+    // finds the median either via quickSelect or median of medians
+
     double qs_median = distributedMedian->quickSelect();
     if (distributedMedian->didQSComplete() == true)
         return qs_median;
@@ -94,6 +103,22 @@ DistributedArrayManager::findMedian()
     vector<mysize_t> dummyVector;
     mysize_t median = getTotalElements()/2; 
     return distributedMedian->medianOfMedians(dummyVector, median, 0, getTotalElements() - 1);
+}
+
+double
+DistributedArrayManager::validateMedian()
+{
+
+   //sort(medianValidate, 0, totalElements - 1); 
+   sort(medianValidate.begin(), medianValidate.end());
+   if (totalElements % 2 == 0) { 
+       int i = medianValidate[totalElements/2 - 1];
+       int k = medianValidate[totalElements/2];
+       double j = (i + k)/2.;
+       return j;
+    } 
+    return medianValidate[totalElements/2];
+
 }
 
 void 
@@ -118,12 +143,34 @@ DistributedArrayManager::getElement(mysize_t index)
    // always looks into the cache first
    // if found, returns from the cache (saves a node round trip -- 
    // read from the node -- will be a bulk read ahead)
-   bool found = false; 
-   int element;
+   myssize_t element;
    if (infm->checkCache(index, element)) { 
       // found in the cache
      return element;
-    } 
+    }
+
+   // TODO: ReadAheadCache->fetchElements(bool forward, bool backward); (uno internode message)
+   // Now the element and its neighbours are in the cache (these elements are in clean state)
+   // clean: don't need to be flushed back to the node (can be discarded by LRU)
+   // get it from the cache now
+
+   myssize_t* nArray = nodesArray[getNode(index)]; 
+   mysize_t rindex = index - getNode(index) * numElementsPerArray; 
+   return nArray[rindex];
+}
+
+myssize_t 
+DistributedArrayManager::getElementNoCache(mysize_t index) 
+{
+
+   // used by ReadAheadCache->fetchElements(bool forward, bool backward); (uno internode message)
+   // Now the element and its neighbours are in the cache (these elements are in clean state)
+   // clean: don't need to be flushed back to the node (can be discarded by LRU)
+   // get it from the cache now
+
+#ifdef STATS_ENABLED
+   ++InterNodeMessages;
+#endif 
 
    myssize_t* nArray = nodesArray[getNode(index)]; 
    mysize_t rindex = index - getNode(index) * numElementsPerArray; 
@@ -134,7 +181,6 @@ InterNodeFlushManager::InterNodeFlushManager(DistributedArrayManager* d) : dam(d
 {
 
      mysize_t nodes = dam->getNumNodes();
-    printf("INFM: got %d nodes\n", nodes); 
      //BatchNodes = new BatchInfo**[nodes]; // Time permitting; more elaborate per node BatchNode
      BatchNodes = new BatchInfo*[nodes];
      if (!BatchNodes) {
@@ -206,6 +252,10 @@ InterNodeFlushManager::checkCache(mysize_t index, myssize_t& element)
 void
 InterNodeFlushManager::queuePair(mysize_t index, myssize_t element)
 {
+   
+   // TODO Note: ReadAheadCache (queuePair to implement LRU eviction)
+   // might need to internally call flush()i -- if elements are dirty?
+
 
    // queue up the element to swap
    // flush will get to all the elements destined for a node
@@ -265,11 +315,11 @@ DistributedMedian::insertionSortDistributed(mysize_t left, mysize_t right)
     dam->printAllArrays();
     //mysize_t left = 0; 
     //mysize_t right = dam->getTotalElements() - 1;
-    int i;
+    mysize_t i;
     for(i = right; i > left; i--) compexch(i-1, i);
     dam->printAllArrays();
     for(i = left + 2; i <= right; i++) {
-        int j = i; mysize_t v = dam->getElementAtIndex(i); // low cost
+        mysize_t j = i; myssize_t v = dam->getElementAtIndex(i); // low cost
         while (j > 0 && v < dam->getElementAtIndex(j-1))
         { dam->setElement(j, dam->getElementAtIndex(j-1)); j--; } 
        dam->setElement(j, v);
@@ -282,8 +332,12 @@ DistributedMedian::insertionSortDistributed(mysize_t left, mysize_t right)
 bool
 DistributedMedian::checkQuickSelectProgress(mysize_t pivotIndex)
 {
+    
+     mysize_t diff = pivotIndex - lastPivotIndex > 0 ? pivotIndex - lastPivotIndex : 
+                   lastPivotIndex - pivotIndex;
 
-    if (abs(int(pivotIndex - lastPivotIndex)) < diffIndex) {
+//    if (abs(int(pivotIndex - lastPivotIndex)) < diffIndex) { // TODO: FIX
+      if (diff < diffIndex) { // TODO: FIX
        ++progressCount;
        if (progressCount > cutoff) {
           printf("quick select not making sufficient progress, pc %d\n", progressCount); 
@@ -320,7 +374,7 @@ DistributedMedian::partition(mysize_t left, mysize_t right, mysize_t pivotIndex)
 {
    // classic parition
    mysize_t i = left - 1, j = right; 
-   mysize_t v;
+   myssize_t v;
 
    if (pivotIndex) {
       // median of medians sends in a pivotIndex
@@ -354,6 +408,12 @@ DistributedMedian::quickSelect()
 {
     // random selection of pivot (last element or something else)
     // iterative to eliminate tail recursion
+
+   /* TODO (use median-of-three)
+   * Median-of-three:
+   * median-of-three with a cutoff for small subfiles/arrays
+   * can improve the running time of quicksort/select by 20 to 25 percent
+   */
 
     mysize_t left = 0; 
     mysize_t right = dam->getTotalElements() - 1;
@@ -442,8 +502,8 @@ DistributedMedian::medianOfMediansFinal(vector<mysize_t>& vec, mysize_t k, mysiz
     printf("GOT MEDIAN MoM %d\n", median);  // TODO: REMOVE
     dam->printAllArrays(); // TODO: REMOVE
     /* use the median to pivot around */
-    int piv = partition(start, end, median);
-    int length = piv - start + 1;
+    mysize_t piv = partition(start, end, median);
+    mysize_t length = piv - start + 1;
     
     if(k < length) {
         return medianOfMediansFinal(vec, k, start, piv);
@@ -454,6 +514,35 @@ DistributedMedian::medianOfMediansFinal(vector<mysize_t>& vec, mysize_t k, mysiz
     else {
         return checkForMedian(k); //dam->getElementAtIndex(k);
      }
+}
+
+void
+ReadAheadCache::fetchElements(mysize_t index, bool forward, bool back) 
+{ 
+   // this is especially useful for something like partition()
+   // or insertionsort or the like. They look at elements sequentially
+   // and the readAhead can bring N elements at a time from a node
+   // and warm up the cache.
+   mysize_t rindex = dam->getRelativeIndex(index);
+   mysize_t elArray = dam->getElementsPerArray();
+   mysize_t forward_index = (rindex + MEM_THRESH > elArray)? elArray - rindex : rindex + MEM_THRESH;
+   mysize_t back_index = (rindex - MEM_THRESH < 0)? rindex : rindex - MEM_THRESH;
+
+   if (forward) { 
+
+      // probably in partition where both side elements are needed
+      // TODO: heuristics
+      for (mysize_t i = 0; i < forward_index; ++i) { 
+          infm->queuePair(index + i , dam->getElementNoCache(index + i ));
+      } 
+
+    }
+
+   if (back) { 
+      for (mysize_t i = rindex; i < back_index; --i) { 
+          infm->queuePair(index - 1, dam->getElementNoCache(index - i ));
+      }
+   }
 }
            
 int main(int argc, char **argv) 
@@ -479,18 +568,42 @@ int main(int argc, char **argv)
        return -1; 
 
      } 
-    
+   
+     char ch;   
+     printf("There are two options to enter elements: manually or autoGenerate (arrays will be printed to stdout)\n");
+     printf("Would you like to enter elements of each array (Y/N)?\n");
+     scanf(" %c", &ch);
 
-     printf("lets enter elements of each array\n");
-     for (mysize_t n = 0; n < numNodes; n++) {
-	printf("lets enter elements of %d array, space separated\n", n + 1);
-        mysize_t element;
-	for (mysize_t j = 0; j < numElements; ++j) {
+     if (ch == 'y' || ch == 'Y' ) {
+
+       printf("lets enter elements of each array\n");
+       for (mysize_t n = 0; n < numNodes; n++) {
+	 printf("lets enter elements of %d array, space separated\n", n + 1);
+         mysize_t element;
+	 for (mysize_t j = 0; j < numElements; ++j) {
             scanf("%d", &element);
             Dam->setElementFlush( (n * numElements) + j, element);
-            //Dam->setElement(j, element);
+#ifdef VALIDATION_ENABLED
+         //Dam->medianValidate[vindex++] = element;
+         Dam->medianValidate.push_back(element);
+#endif
 	}
+       }
+     } else { 
+       printf("autoGenerate will enter elements of each array\n");
+       for (mysize_t n = 0; n < numNodes; n++) {
+         mysize_t element;
+	 for (mysize_t j = 0; j < numElements; ++j) {
+            element = (17*rand() + 23) % 100;  // arbitrary: could be anything (including negative #s)
+            Dam->setElementFlush( (n * numElements) + j, element);
+#ifdef VALIDATION_ENABLED
+            //Dam->medianValidate[vindex++] = element;
+            Dam->medianValidate.push_back(element);
+#endif
+	}
+       }
      }
+
 
      Dam->printAllArrays();
 
@@ -500,7 +613,19 @@ int main(int argc, char **argv)
 
      double median = Dam->findMedian();
 
-     printf("\n median found is %lf\n", median); 
+     printf("\n median found is %lf\n", median);
+
+#ifdef VALIDATION_ENABLED
+     double vmedian =  Dam->validateMedian();
+     printf("\n Validated Median found is %f\n", vmedian); 
+#endif
+
+#ifdef STATS_ENABLED
+     printf("\n STATS\n"); 
+     printf("\n InterNode messages passed (TODO) %d\n", Dam->getInterNodeMessages()); 
+     printf("\n Was Median of Medians used = %d\n", Dam->momUsed()); 
+     //printf("\n run time %d\n", dam->runTime());  // TODO
+#endif
 
      Dam->printAllArrays();
 
