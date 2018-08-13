@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <iostream>
 #include <assert.h>
+#include <math.h>
 
 using namespace std;
 
@@ -52,16 +53,19 @@ class DistributedMedian {
     DistributedArrayManager* dam;
     InterNodeFlushManager*   infm;
 
-    static const mysize_t cutoff = 10; 
+    const mysize_t cutoff = 3; // switches to median of medians
+    const mysize_t diffIndex = 3; // switches to median of medians
+    mysize_t  lastPivotIndex;
+    mysize_t  progressCount;
 
 public: 
  
-     DistributedMedian(DistributedArrayManager* d, InterNodeFlushManager* fm): dam(d), infm(fm) { }
+     DistributedMedian(DistributedArrayManager* d, InterNodeFlushManager* fm): dam(d), infm(fm), progressCount(0) { }
      double   quickSelect(); 
-     double   quickSelect2(); 
-     double medianOfMedians(vector<mysize_t>&, mysize_t k, mysize_t left, mysize_t right); 
-     double medianOfMediansFinal(vector<mysize_t>&, mysize_t k, mysize_t left, mysize_t right, bool mom = false); 
+     double   medianOfMedians(vector<mysize_t>&, mysize_t k, mysize_t left, mysize_t right); 
+     double   medianOfMediansFinal(vector<mysize_t>&, mysize_t k, mysize_t left, mysize_t right, bool mom = false); 
      mysize_t partition(mysize_t left, mysize_t right, mysize_t pivotIndex=0);
+     bool     checkQuickSelectProgress(mysize_t pivotIndex); // TODO: needs more thought
      void     exch(mysize_t index1, mysize_t index2);
      void     compexchsimple(myssize_t element1, myssize_t element2);
      void     compexch(mysize_t index1, mysize_t index2);
@@ -69,6 +73,7 @@ public:
      void     medianInsertionSortDistributed();
      void     insertionSortSimple();
      double   checkForMedian(mysize_t index);
+     bool     didQSComplete() { return progressCount < cutoff; } 
 };
 
 
@@ -173,14 +178,14 @@ public:
 
 // TODO
 // qS (with 3): enhancement
-// use Double when total array size is even (n + n+1/2)
-// MoM 
-// policy: cut over from qS to Mom
-// git: clean up 
+// use Double when total array size is even (n + n+1/2) *
+// MoM *
+// policy: cut over from qS to Mom *
+// git: clean up * 
 // indentation
-// insertion sort
+// insertion sort *
 // read ahead cache (getElementAtIndex(x)): constraint (memory on controller node: memory threshold)
-// -- lookup flush manager cache
-// -- update index if it exists (or for now just append)
+// -- lookup flush manager cache *
+// -- update index if it exists (or for now just append) *
 // statisic generator (InterNode messages) 
 // TESTING: auto array element generator

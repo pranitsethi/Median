@@ -86,7 +86,11 @@ double
 DistributedArrayManager::findMedian() 
 {
 
-    //return distributedMedian->quickSelect();
+    double qs_median = distributedMedian->quickSelect();
+    if (distributedMedian->didQSComplete() == true)
+        return qs_median;
+
+    // median of medians
     vector<mysize_t> dummyVector;
     mysize_t median = getTotalElements()/2; 
     return distributedMedian->medianOfMedians(dummyVector, median, 0, getTotalElements() - 1);
@@ -275,18 +279,23 @@ DistributedMedian::insertionSortDistributed(mysize_t left, mysize_t right)
     dam->printAllArrays();
 }
 
-/*void
-DistributedMedian::insertionSortSimple(vector<mysize_t>& vec, mysize_t l, mysize_t r )
+bool
+DistributedMedian::checkQuickSelectProgress(mysize_t pivotIndex)
 {
-    int i;
-    for(i = r; i > l; i--) compexchsimple(vec[i-1], vec[i]); // TODO: vector
-    for(i = l + 2; i <= r; i++) {
-        int j = i; mysize_t v = vec(i); // TODO: vec
-        while (v < vec(j-1)) // TODO: vec
-        { vec(j) = vec(j - 1); j--; } 
-        vec(j) = v;
+
+    if (abs(int(pivotIndex - lastPivotIndex)) < diffIndex) {
+       ++progressCount;
+       if (progressCount > cutoff) {
+          printf("quick select not making sufficient progress, pc %d\n", progressCount); 
+          printf("switching over to median of medians\n"); 
+          return true;
+       }
     }
-}*/
+    printf("diff %f, di %d, lp %d, pi %d\n", fabs(pivotIndex - lastPivotIndex), diffIndex, lastPivotIndex, pivotIndex);  // TODO: REMOVE
+    lastPivotIndex = pivotIndex;
+    return false; // do not switch to median of medians
+
+}
 
 void
 DistributedMedian::exch(mysize_t index1, mysize_t index2) 
@@ -350,78 +359,20 @@ DistributedMedian::quickSelect()
     mysize_t right = dam->getTotalElements() - 1;
     mysize_t median = (right + 1)/ 2;
     mysize_t pivotIndex = right;
-    printf("enter quick select r %d, m %d, pi %d\n", right, median, pivotIndex); 
+    printf("enter quick select r %d, m %d, pi %d\n", right, median, pivotIndex); //TODO: REMOVE
 
     while (right > left) {
     
         pivotIndex = partition(left, right);
+        if (checkQuickSelectProgress(pivotIndex)) // true returns implies not good progress (possibly O(n^2))
+           return 0; // this value is meaningless
+        printf("partition pivotIndex %d\n",pivotIndex); //TODO: REMOVE
         if (pivotIndex >= median) right = pivotIndex - 1; 
         if (pivotIndex <= median) left  = pivotIndex + 1; 
     }
 
    return checkForMedian(pivotIndex);
 }
-
-/*mysize_t 
-DistributedMedian::quickSelect2() 
-{
-
-    // correctness: even or odd sized array TODO
-    // random selection of pivot (last element or something else)
-    // iterative to eliminate tail recursion
-
-    mysize_t left = 0; 
-    mysize_t right = dam->getTotalElements() - 1;
-    mysize_t median = (right + 1)/ 2;
-    mysize_t pivotIndex = right;
-    printf("enter quick select r %d, m %d, pi %d\n", right, median, pivotIndex); 
-    
-     //loop
-     while (pivotIndex != median) {
-     
-         if (left == right)
-             return dam->getElementAtIndex(left);
-         //pivotIndex = left + floor(rand() % (right - left + 1));     // randomly select pivotIndex between left and right (TODO: text)
-         pivotIndex = partition(left, right);
-         if (median == pivotIndex)
-             return dam->getElementAtIndex(pivotIndex);
-         else if (median < pivotIndex)
-             right = pivotIndex - 1;
-         else
-             left = pivotIndex + 1;
-     }
-
-     if (dam->getTotalElements() % 2 == 0) { 
-        return (dam->getElementAtIndex(pivotIndex - 1) + dam->getElementAtIndex(pivotIndex)) / 2; 
-     } else { 
-         return dam->getElementAtIndex(pivotIndex);
-     } 
-}*/
-
-/*
-mysize_t
-DistributedMedian::getMedian5(vector<int>& vec, int k, int start, int end)
-{
-
-     if(end-start < 10){
-        sort(vec.begin()+start, vec.begin()+end);
-        return vec.at(k);
-    }
-    
-    vector<mysize_t> medians;
-    for(mysize_t i = start; i < end; i+=5){
-        if(end - i < 10){
-            sort(vec.begin()+i, vec.begin()+end);
-            medians.push_back(vec.at((i+end)/2));
-        }
-        else{
-            sort(vec.begin()+i, vec.begin()+i+5);
-            medians.push_back(vec.at(i+2));
-        }
-    }
-    
-    int median = getMedian5(medians, medians.size()/2, 0, medians.size());
-}*/
 
 double 
 DistributedMedian::checkForMedian(mysize_t pivotIndex)
@@ -468,7 +419,7 @@ DistributedMedian::medianOfMediansFinal(vector<mysize_t>& vec, mysize_t k, mysiz
       if (mom) 
         return vec.at(k);
       else 
-        return dam->getElementAtIndex(k);
+        return checkForMedian(k); //dam->getElementAtIndex(k);
     }
     
     vector<mysize_t> medians;
@@ -495,15 +446,12 @@ DistributedMedian::medianOfMediansFinal(vector<mysize_t>& vec, mysize_t k, mysiz
     int length = piv - start + 1;
     
     if(k < length) {
-        //assert(0);
         return medianOfMediansFinal(vec, k, start, piv);
     }
     else if(k > length){
-        //assert(0);
         return medianOfMediansFinal(vec, k-length, piv+1, end);
     }
     else {
-        //assert(0);
         return checkForMedian(k); //dam->getElementAtIndex(k);
      }
 }
