@@ -66,11 +66,13 @@ public:
  
      DistributedMedian(DistributedArrayManager* d, InterNodeFlushManager* fm): dam(d), infm(fm), progressCount(0) { }
      double   quickSelect(); 
-     double   medianOfMedians(vector<mysize_t>&, mysize_t k, mysize_t left, mysize_t right); 
-     double   medianOfMediansFinal(vector<mysize_t>&, mysize_t k, mysize_t left, mysize_t right, bool mom = false); 
-     mysize_t partition(mysize_t left, mysize_t right, mysize_t pivotIndex=0);
+     void     quickSelectRecursive(mysize_t l, mysize_t r, mysize_t k);
+     double   medianOfMedians(vector<myssize_t>&, mysize_t k, mysize_t left, mysize_t right); 
+     double   medianOfMediansFinal(vector<myssize_t>&, mysize_t k, mysize_t left, mysize_t right, bool mom = false); 
+     mysize_t partition(mysize_t left, mysize_t right, myssize_t pivotElement=0);
      bool     checkQuickSelectProgress(mysize_t pivotIndex); // TODO: needs more thought
      void     exch(mysize_t index1, mysize_t index2);
+     void     exchFlush(mysize_t index1, mysize_t index2); // Test only
      void     compexch(mysize_t index1, mysize_t index2);
      void     insertionSortDistributed(mysize_t left_index, mysize_t right_index); // hint: args are indexes
      double   checkForMedian(mysize_t index);
@@ -206,4 +208,3 @@ public:
 // README
 // printf 
 // TODO
-// diff negative bug

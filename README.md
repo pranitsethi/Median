@@ -1,4 +1,19 @@
-Asssumptions:
+Instructions to build and run: 
+----------------------------
+
+(download all the files (git clone <path> or untar the tarball)
+make  (to build)
+
+./Media_Engine (to run)
+(program will ask to input number of nodes followed by elements per array)
+(then select whether you'd like to enter the input manually or let the program
+(auto generate (using rand()) the elements of the array).
+(After a few leftover messages, you should see what the program calculated as median)
+(if validation is enabled (it is by default -- should be disabled for perf tests), then
+(a validated median is also displayed -- (fingers crossed :), they should match).
+
+
+Assumptions:
 ------------
 
 * Arrays are unsorted

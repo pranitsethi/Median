@@ -95,12 +95,14 @@ DistributedArrayManager::findMedian()
 
     // finds the median either via quickSelect or median of medians
 
+    //distributedMedian->quickSelectRecursive(0, totalElements -1, totalElements/2);
+    //double qs_median = distributedMedian->checkForMedian(totalElements/2);
     double qs_median = distributedMedian->quickSelect();
     if (distributedMedian->didQSComplete() == true)
         return qs_median;
 
     // median of medians
-    vector<mysize_t> dummyVector;
+    vector<myssize_t> dummyVector;
     mysize_t median = getTotalElements()/2; 
     return distributedMedian->medianOfMedians(dummyVector, median, 0, getTotalElements() - 1);
 }
@@ -220,11 +222,11 @@ InterNodeFlushManager::swapValues(mysize_t index1, mysize_t index2)
         printf("swapValues: Not queuing index1 %d, index2 %d - they are same\n", index1, index2); 
         return;
     }
-    printf("swapValues: index1 %d, index2 %d\n", index1, index2); 
+    //printf("swapValues: index1 %d, index2 %d\n", index1, index2); //TODO: REMOVE
 
     mysize_t element1 = dam->getElementAtIndex(index1); // takes advantage of read ahead
     mysize_t element2 = dam->getElementAtIndex(index2);
-    printf("swapValues: got values element1 %d, element2 %d\n", element1, element2); 
+    //printf("swapValues: got values element1 %d, element2 %d\n", element1, element2); // TODO: REMOVE
 
     queuePair(index2, element1); // indexes and values swapped
     queuePair(index1, element2);
@@ -241,7 +243,7 @@ InterNodeFlushManager::checkCache(mysize_t index, myssize_t& element)
            if (it->first == index) { 
              // found the pair in the list
              // there can only be one such pair for that index in the list
-              printf("queuePair: check index %d, element %d, node %d, szv %lu\n", it->first, it->second, node, BatchNodes[node]->ev.size()); 
+                printf("queuePair: found check index %d, element %d, node %d, szv %lu\n", it->first, it->second, node, BatchNodes[node]->ev.size()); 
              element = it->second;
              return true;
             }
@@ -279,7 +281,7 @@ InterNodeFlushManager::queuePair(mysize_t index, myssize_t element)
         BatchNodes[node]->ev.push_back(std::make_pair(index, element));
 
     
-    printf("queuePair: index %d, element %d, node %d, szv %lu\n", index, element, node, BatchNodes[node]->ev.size()); 
+    //printf("queuePair: index %d, element %d, node %d, szv %lu\n", index, element, node, BatchNodes[node]->ev.size());  // TODO: REMOVE
 }
 
 void
@@ -300,7 +302,7 @@ InterNodeFlushManager::flush()
         // this encapsulates a message for all data and sends it to node 'n'
         // a worker recieves the message and then swaps in the new values (local)
         // TODO: would also update the readAheadCache eventually (or only that if under memory threshold)
-        printf("flush found index %d, element %d, node %d, szv %lu\n", it->first, it->second, n, BatchNodes[n]->ev.size()); 
+         //printf("flush found index %d, element %d, node %d, szv %lu\n", it->first, it->second, n, BatchNodes[n]->ev.size()); 
         dam->setElementFlush(it->first, it->second);
         BatchNodes[n]->ev.erase(BatchNodes[n]->ev.begin());
        }
@@ -312,29 +314,31 @@ void
 DistributedMedian::insertionSortDistributed(mysize_t left, mysize_t right)
 {
 
-    dam->printAllArrays();
+    //dam->printAllArrays(); // TODO: REMOVE
     //mysize_t left = 0; 
     //mysize_t right = dam->getTotalElements() - 1;
     mysize_t i;
     for(i = right; i > left; i--) compexch(i-1, i);
-    dam->printAllArrays();
+    //dam->printAllArrays(); // TODO: REMOVE
     for(i = left + 2; i <= right; i++) {
         mysize_t j = i; myssize_t v = dam->getElementAtIndex(i); // low cost
         while (j > 0 && v < dam->getElementAtIndex(j-1))
         { dam->setElement(j, dam->getElementAtIndex(j-1)); j--; } 
        dam->setElement(j, v);
-    dam->printAllArrays();
+    //dam->printAllArrays(); // TODO: REMOVE
     }
     infm->flush();
-    dam->printAllArrays();
+    //dam->printAllArrays(); // TODO: REMOVE
 }
 
 bool
 DistributedMedian::checkQuickSelectProgress(mysize_t pivotIndex)
 {
-    
-     mysize_t diff = pivotIndex - lastPivotIndex > 0 ? pivotIndex - lastPivotIndex : 
-                   lastPivotIndex - pivotIndex;
+  
+     myssize_t udiff  = pivotIndex - lastPivotIndex; 
+     mysize_t  diff = abs(udiff);
+     //myssize_t diff = pivotIndex - lastPivotIndex > 0 ? pivotIndex - lastPivotIndex : 
+      //             lastPivotIndex - pivotIndex;
 
 //    if (abs(int(pivotIndex - lastPivotIndex)) < diffIndex) { // TODO: FIX
       if (diff < diffIndex) { // TODO: FIX
@@ -345,11 +349,12 @@ DistributedMedian::checkQuickSelectProgress(mysize_t pivotIndex)
           return true;
        }
     }
-    printf("diff %f, di %d, lp %d, pi %d\n", fabs(pivotIndex - lastPivotIndex), diffIndex, lastPivotIndex, pivotIndex);  // TODO: REMOVE
+    printf("diff %d, di %d, lp %d, pi %d\n", diff, diffIndex, lastPivotIndex, pivotIndex);  // TODO: REMOVE
     lastPivotIndex = pivotIndex;
     return false; // do not switch to median of medians
 
 }
+
 
 void
 DistributedMedian::exch(mysize_t index1, mysize_t index2) 
@@ -361,6 +366,18 @@ DistributedMedian::exch(mysize_t index1, mysize_t index2)
 }
 
 void
+DistributedMedian::exchFlush(mysize_t index1, mysize_t index2) 
+{
+   // < only for testing >
+   // exchange the values at index1 & index2
+   // However, its an sync operation 
+    myssize_t element1 = dam->getElementAtIndex(index1);
+    myssize_t element2 = dam->getElementAtIndex(index2);
+    dam->setElementFlush(index1, element2);
+    dam->setElementFlush(index2, element1);
+}
+
+void
 DistributedMedian::compexch(mysize_t index1, mysize_t index2)
 {
 
@@ -369,22 +386,21 @@ DistributedMedian::compexch(mysize_t index1, mysize_t index2)
 
 }
 
-mysize_t 
-DistributedMedian::partition(mysize_t left, mysize_t right, mysize_t pivotIndex) 
+mysize_t
+DistributedMedian::partition(mysize_t left, mysize_t right, myssize_t pivotElement) 
 {
    // classic parition
-   mysize_t i = left - 1, j = right; 
+   mysize_t i = left - 1, j = right;
    myssize_t v;
-
-   if (pivotIndex) {
-      // median of medians sends in a pivotIndex
-      v = dam->getElementAtIndex(pivotIndex);
-    } else {
-   // randomly chooses to partition with the last element
-      v = dam->getElementAtIndex(right);
+   
+   if (pivotElement) {
+      v = pivotElement;
+   } else {
+     // randomly chooses to partition with the last element
+     v = dam->getElementAtIndex(right);
    }
 
-   printf("partition i %d, j %d element %d\n", i,j, v); 
+   printf("partition i %d, j %d element %d, pe %d\n", i,j, v, pivotElement); 
    for(;;)
     {
  
@@ -392,16 +408,28 @@ DistributedMedian::partition(mysize_t left, mysize_t right, mysize_t pivotIndex)
      while (j > 0 && v < dam->getElementAtIndex(--j)) if (j == left) break;
      if (i >= j) break;
      else if(dam->getElementAtIndex(i) == dam->getElementAtIndex(j)) {++i; continue;} // duplicate elements
-     exch(i, j); 
+     printf("exchange i %d, j %d, elementsi %d, elementj %d\n", i,j,dam->getElementAtIndex(i),dam->getElementAtIndex(j)); 
+     exch(i, j);
     }
-   exch(i, right);
+    if (!pivotElement)
+       exch(i, right);  // don't exchange the last element if we supplied a pivot (MOM)
 
    infm->flush(); // TODO: can this be further delayed? (upto one message to each node possible here)
 
-   printf("returning pivot %d\n", i); 
+   printf("returning pivot i %d\n", i);
+   dam->printAllArrays();
    return i; // pivot
 }
 
+void
+DistributedMedian::quickSelectRecursive(mysize_t l, mysize_t r, mysize_t k) 
+{
+
+   if (r<= l) return;
+   mysize_t i = partition(l, r);
+   if (i > k) quickSelectRecursive(l, i-1, k); 
+   if (i < k) quickSelectRecursive(i+1, r, k);
+}
 
 double
 DistributedMedian::quickSelect() 
@@ -409,30 +437,29 @@ DistributedMedian::quickSelect()
     // random selection of pivot (last element or something else)
     // iterative to eliminate tail recursion
 
-   /* TODO (use median-of-three)
-   * Median-of-three:
-   * median-of-three with a cutoff for small subfiles/arrays
-   * can improve the running time of quicksort/select by 20 to 25 percent
-   */
+   // TODO (use median-of-three)
+   // Median-of-three:
+   // median-of-three with a cutoff for small subfiles/arrays
+   // can improve the running time of quicksort/select by 20 to 25 percent
 
     mysize_t left = 0; 
     mysize_t right = dam->getTotalElements() - 1;
-    mysize_t median = (right + 1)/ 2;
-    mysize_t pivotIndex = right;
-    printf("enter quick select r %d, m %d, pi %d\n", right, median, pivotIndex); //TODO: REMOVE
+    mysize_t median = dam->getTotalElements()/2; // index
+    printf("enter quick select r %d, m %d, \n", right, median); //TODO: REMOVE
 
     while (right > left) {
     
-        pivotIndex = partition(left, right);
-        if (checkQuickSelectProgress(pivotIndex)) // true returns implies not good progress (possibly O(n^2))
-           return 0; // this value is meaningless
-        printf("partition pivotIndex %d\n",pivotIndex); //TODO: REMOVE
+        mysize_t pivotIndex = partition(left, right);
+        //if (checkQuickSelectProgress(pivotIndex)) // true return implies not good progress (possibly O(n^2))
+         //  return 0; // this return value is meaningless
+        printf("partition pivotIndex %d\n",pivotIndex); //TODO: DEBUG REMOVE
         if (pivotIndex >= median) right = pivotIndex - 1; 
         if (pivotIndex <= median) left  = pivotIndex + 1; 
     }
 
-   return checkForMedian(pivotIndex);
+   return checkForMedian(median);
 }
+
 
 double 
 DistributedMedian::checkForMedian(mysize_t pivotIndex)
@@ -451,7 +478,7 @@ DistributedMedian::checkForMedian(mysize_t pivotIndex)
 
 
 double
-DistributedMedian::medianOfMedians(vector<mysize_t>& vec, mysize_t k, mysize_t start, mysize_t end)
+DistributedMedian::medianOfMedians(vector<myssize_t>& vec, mysize_t k, mysize_t start, mysize_t end)
 {
   // if the data set is small, sort it and return the median
    if(end - start < 10) {
@@ -464,25 +491,24 @@ DistributedMedian::medianOfMedians(vector<mysize_t>& vec, mysize_t k, mysize_t s
 }
 
 double
-DistributedMedian::medianOfMediansFinal(vector<mysize_t>& vec, mysize_t k, mysize_t start, mysize_t end, bool mom)
+DistributedMedian::medianOfMediansFinal(vector<myssize_t>& vec, mysize_t k, mysize_t start, mysize_t end, bool mom)
 {
    // recursive method (watch out for the recursive depth here)
    // don't blow the stack! (add bounds check (check stack size on stacking every new
    // frame on the stack) -- TODO: get stack size).
 
-    printf("enter MoM l, %d, r %d, m %d\n", start, end, k);  // TODO: REMOVE
+    printf("enter MoM l, %d, r %d, k %d\n", start, end, k);  // TODO: REMOVE
 
    // base case
    if(end - start < 10) {
       insertionSortDistributed(start, end);
-      printf("GOT KMEDIAN MoM %d\n", k);  // TODO: REMOVE
       if (mom) 
         return vec.at(k);
       else 
-        return checkForMedian(k); //dam->getElementAtIndex(k);
+        return checkForMedian(k + start); //dam->getElementAtIndex(k);
     }
     
-    vector<mysize_t> medians;
+    vector<myssize_t> medians;
     /* sort every consecutive 5 */
     for(mysize_t i = start; i < end; i+=5){
         if(end - i < 10){
@@ -492,26 +518,29 @@ DistributedMedian::medianOfMediansFinal(vector<mysize_t>& vec, mysize_t k, mysiz
         else{
             insertionSortDistributed(i, i+5);
 
-            dam->printAllArrays(); // TODO: REMOVE
+            //dam->printAllArrays(); // TODO: REMOVE
             medians.push_back(dam->getElementAtIndex(i+2));
         }
     }
     
-    mysize_t median = medianOfMediansFinal(medians, medians.size()/2, 0, medians.size(), true);
+    myssize_t median = medianOfMediansFinal(medians, medians.size()/2, 0, medians.size(), true);
     
     printf("GOT MEDIAN MoM %d\n", median);  // TODO: REMOVE
-    dam->printAllArrays(); // TODO: REMOVE
-    /* use the median to pivot around */
+    //dam->printAllArrays(); // TODO: REMOVE
     mysize_t piv = partition(start, end, median);
     mysize_t length = piv - start + 1;
+    //printf("after part piv %d, st %d, l %d,k %d\n", piv, start, length, k);  // TODO: REMOVE
     
     if(k < length) {
+        printf("< k after part piv %d, st %d, end %d, l %d,k %d\n", piv, start, end, length, k);  // TODO: REMOVE
         return medianOfMediansFinal(vec, k, start, piv);
     }
     else if(k > length){
+        printf("> k after part piv %d, st %d, end %d, l %d,k %d\n", piv, start, end, length, k);  // TODO: REMOVE
         return medianOfMediansFinal(vec, k-length, piv+1, end);
     }
     else {
+        printf("= k after part piv %d, st %d, l %d,k %d\n", piv, start, length, k);  // TODO: REMOVE
         return checkForMedian(k); //dam->getElementAtIndex(k);
      }
 }
