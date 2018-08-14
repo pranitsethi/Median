@@ -1,4 +1,8 @@
- /*  // TODO: COMMENTS/EXPLAINATION
+/*  Median finder: 
+ *  Given a set of (simulated) distributed nodes, find its median.
+ *  This file contains the definitions of methods used for locating medians
+ *  in the distributed data.
+ *  See README for details.
  */
 
 #pragma once
@@ -27,6 +31,8 @@ typedef signed int myssize_t;   // all elements must be of type myssize_t (if th
 
 #define STATS_ENABLED
 #define VALIDATION_ENABLED
+//#define DEBUG_ENABLED
+#define MEDIAN_THREE    // median of three (quick select) is enabled
 
 class InterNodeFlushManager;
 class DistributedMedian;
@@ -37,11 +43,11 @@ class ReadAheadCache;
 /** 
  * A class used for input validation. 
  * (can't be disabled-- doesn't affect runtime) 
-*/
+ */
 class Validation { 
 
-public:
-   bool static validateInputs(mysize_t N, mysize_t elementCount);
+	public:
+		bool static validateInputs(mysize_t N, mysize_t elementCount);
 };
 
 /* 
@@ -54,29 +60,29 @@ public:
 
 class DistributedMedian { 
 
-    DistributedArrayManager* dam;
-    InterNodeFlushManager*   infm;
+	DistributedArrayManager* dam;
+	InterNodeFlushManager*   infm;
 
-    const mysize_t cutoff = 3; // switches to median of medians
-    const mysize_t diffIndex = 3; // && switches to median of medians
-    mysize_t  lastPivotIndex;
-    mysize_t  progressCount;
+	const mysize_t cutoff = 3; // switches to median of medians
+	const mysize_t diffIndex = 3; // && switches to median of medians
+	mysize_t  lastPivotIndex;
+	mysize_t  progressCount;
 
-public: 
- 
-     DistributedMedian(DistributedArrayManager* d, InterNodeFlushManager* fm): dam(d), infm(fm), progressCount(0) { }
-     double   quickSelect(); 
-     void     quickSelectRecursive(mysize_t l, mysize_t r, mysize_t k);
-     double   medianOfMedians(vector<myssize_t>&, mysize_t k, mysize_t left, mysize_t right); 
-     double   medianOfMediansFinal(vector<myssize_t>&, mysize_t k, mysize_t left, mysize_t right, bool mom = false); 
-     mysize_t partition(mysize_t left, mysize_t right, myssize_t pivotElement=0);
-     bool     checkQuickSelectProgress(mysize_t pivotIndex); // TODO: needs more thought
-     void     exch(mysize_t index1, mysize_t index2);
-     void     exchFlush(mysize_t index1, mysize_t index2); // Test only
-     void     compexch(mysize_t index1, mysize_t index2);
-     void     insertionSortDistributed(mysize_t left_index, mysize_t right_index); // hint: args are indexes
-     double   checkForMedian(mysize_t index);
-     bool     didQSComplete() { return progressCount < cutoff; } 
+	public: 
+
+	DistributedMedian(DistributedArrayManager* d, InterNodeFlushManager* fm): dam(d), infm(fm), progressCount(0) { }
+	double   quickSelect(); 
+	void     quickSelectRecursive(mysize_t l, mysize_t r, mysize_t k);
+	double   medianOfMedians(vector<myssize_t>&, mysize_t k, mysize_t left, mysize_t right); 
+	double   medianOfMediansFinal(vector<myssize_t>&, mysize_t k, mysize_t left, mysize_t right, bool mom = false); 
+	mysize_t partition(mysize_t left, mysize_t right, myssize_t pivotElement=0);
+	bool     checkQuickSelectProgress(mysize_t pivotIndex); // TODO: needs more thought
+	void     exch(mysize_t index1, mysize_t index2);
+	void     exchFlush(mysize_t index1, mysize_t index2); // Test only
+	void     compexch(mysize_t index1, mysize_t index2);
+	void     insertionSortDistributed(mysize_t left_index, mysize_t right_index); // hint: args are indexes
+	double   checkForMedian(mysize_t index);
+	bool     didQSComplete() { return progressCount < cutoff; } 
 };
 
 
@@ -87,47 +93,47 @@ public:
  */
 class DistributedArrayManager { 
 
-     mysize_t  numNodes;
-     myssize_t** nodesArray; // map to all arrays
-     mysize_t  totalElements; // accross all arrays
-     mysize_t  numElementsPerArray; // easy to save than calculate each time (totalElements/numNodes) 
-     DistributedMedian* distributedMedian;
-     InterNodeFlushManager* infm;
-     ReadAheadCache*  rac;
+	mysize_t  numNodes;
+	myssize_t** nodesArray; // map to all arrays
+	mysize_t  totalElements; // accross all arrays
+	mysize_t  numElementsPerArray; // easy to save than calculate each time (totalElements/numNodes) 
+	DistributedMedian* distributedMedian;
+	InterNodeFlushManager* infm;
+	ReadAheadCache*  rac;
 #ifdef STATS_ENABLED
-    mysize_t  InterNodeMessages;
+	mysize_t  InterNodeMessages;
 #endif
 
 
-public: 
+	public: 
 
-    DistributedArrayManager(mysize_t Nodes, mysize_t numElements);
-    void      setElement(mysize_t index, myssize_t element);  // goes through the cache
-    void      setElementFlush(mysize_t index, myssize_t element); // goes direct (ONLY called by cache flush or input-init) 
-    myssize_t getElement(mysize_t index);
-    myssize_t getElementNoCache(mysize_t index);
-    mysize_t  getRelativeIndex(mysize_t index) { return index % numElementsPerArray; }
-    bool      checkCache(mysize_t index);
-    void      printAllArrays();
-    mysize_t  getNumNodes() { return numNodes; }
-    mysize_t  getNode(mysize_t index) { return index/numElementsPerArray; }
-    mysize_t  getTotalElements() { return totalElements; }
-    mysize_t  getElementsPerArray() { return numElementsPerArray; }
-    myssize_t getElementAtIndex(mysize_t index) { assert (index >= 0 && index < totalElements); return getElement(index); }
-    double    findMedian();
+	DistributedArrayManager(mysize_t Nodes, mysize_t numElements);
+	void      setElement(mysize_t index, myssize_t element);  // goes through the cache
+	void      setElementFlush(mysize_t index, myssize_t element); // goes direct (ONLY called by cache flush or input-init) 
+	myssize_t getElement(mysize_t index);
+	myssize_t getElementNoCache(mysize_t index);
+	mysize_t  getRelativeIndex(mysize_t index) { return index % numElementsPerArray; }
+	bool      checkCache(mysize_t index);
+	void      printAllArrays();
+	mysize_t  getNumNodes() { return numNodes; }
+	mysize_t  getNode(mysize_t index) { return index/numElementsPerArray; }
+	mysize_t  getTotalElements() { return totalElements; }
+	mysize_t  getElementsPerArray() { return numElementsPerArray; }
+	myssize_t getElementAtIndex(mysize_t index) { assert (index >= 0 && index < totalElements); return getElement(index); }
+	double    findMedian();
 #ifdef STATS_ENABLED
-    bool      momUsed() { return !distributedMedian->didQSComplete(); }
-    bool      getInterNodeMessages() { return InterNodeMessages; }
+	bool      momUsed() { return !distributedMedian->didQSComplete(); }
+	bool      getInterNodeMessages() { return InterNodeMessages; }
 #endif
 
 #ifdef VALIDATION_ENABLED
-   double   validateMedian(); 
-   vector<myssize_t> medianValidate;
+	double   validateMedian(); 
+	vector<myssize_t> medianValidate;
 #endif
 
 
-    friend class InterNodeFlushManager;
-    friend class DistributedMedian;
+	friend class InterNodeFlushManager;
+	friend class DistributedMedian;
 
 };
 
@@ -139,36 +145,36 @@ public:
 
 class InterNodeFlushManager { 
 
-  // this object manaages communication amidst the nodes
-  // however in a batched fashion so to minmize the need to 
-  // hit the wire
+	// this object manaages communication amidst the nodes
+	// however in a batched fashion so to minmize the need to 
+	// hit the wire
 
-  // each node has one of these to accrue changes to be sent to every other node (if required)
+	// each node has one of these to accrue changes to be sent to every other node (if required)
 
- /* 
-  * BatchInfo collects and manages the element information to be flushed by the flush manager 
-  *
-  */
-  class BatchInfo { 
+	/* 
+	 * BatchInfo collects and manages the element information to be flushed by the flush manager 
+	 *
+	 */
+	class BatchInfo { 
 
-  public:
-    BatchInfo* next; 
-    mysize_t Node; 
-    std::vector<std::pair<mysize_t, myssize_t>> ev; 
-    mysize_t getSize() { return ev.size(); }
-    BatchInfo(mysize_t n): next(NULL), Node(n) {}   // next == NULL for the simpler approach
-  };
+		public:
+			BatchInfo* next; 
+			mysize_t Node; 
+			std::vector<std::pair<mysize_t, myssize_t>> ev; 
+			mysize_t getSize() { return ev.size(); }
+			BatchInfo(mysize_t n): next(NULL), Node(n) {}   // next == NULL for the simpler approach
+	};
 
-   DistributedArrayManager* dam;
-   BatchInfo** BatchNodes;
+	DistributedArrayManager* dam;
+	BatchInfo** BatchNodes;
 
-public:
-   InterNodeFlushManager(DistributedArrayManager* d);
-   void flush(); // method which sends the information to nodes in batched form
-   void swapValues(mysize_t src_index, mysize_t dest_index); // async: queues it up and passes a batch message eventually
-   // Note: ReadAheadCache (queuePair to implement LRU eviction)
-   void queuePair(mysize_t index, myssize_t element);
-   bool checkCache(mysize_t index, myssize_t& element);
+	public:
+	InterNodeFlushManager(DistributedArrayManager* d);
+	void flush(); // method which sends the information to nodes in batched form
+	void swapValues(mysize_t src_index, mysize_t dest_index); // async: queues it up and passes a batch message eventually
+	// Note: ReadAheadCache (queuePair to implement LRU eviction)
+	void queuePair(mysize_t index, myssize_t element);
+	bool checkCache(mysize_t index, myssize_t& element);
 
 };
 
@@ -187,24 +193,19 @@ public:
 class ReadAheadCache {
 
 
-   // memory threshold (LRU eviction policy)
-   const mysize_t MEM_THRESH = 10; // tweak: how much memory is availiable?
-   DistributedArrayManager* dam;
-   InterNodeFlushManager* infm;
+	// memory threshold (LRU eviction policy)
+	const mysize_t MEM_THRESH = 10; // tweak: how much memory is availiable?
+	DistributedArrayManager* dam;
+	InterNodeFlushManager* infm;
 
-public: 
-     
-    ReadAheadCache(DistributedArrayManager* d, InterNodeFlushManager* inf): dam(d), infm(inf) {}
-    void fetchElements(mysize_t index, bool forward, bool backward); // TODO: more on args
+	public: 
+
+	ReadAheadCache(DistributedArrayManager* d, InterNodeFlushManager* inf): dam(d), infm(inf) {}
+	void fetchElements(mysize_t index, bool forward, bool backward); // TODO: more on args
 };
 
 
 
 // TODO
-// qS (with 3): enhancement
-// indentation
 // read ahead cache (getElementAtIndex(x)): constraint (memory on controller node: memory threshold)
-// statisic generator (InterNode messages) 
-// README
-// printf 
-// TODO
+// statisic generator (InterNode messages: dependency on read ahead cache :() 

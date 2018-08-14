@@ -2,6 +2,7 @@ Instructions to build and run:
 ----------------------------
 
 (download all the files (git clone <path> or untar the tarball)
+
 make  (to build)
 
 ./Media_Engine (to run)
@@ -9,8 +10,67 @@ make  (to build)
 (then select whether you'd like to enter the input manually or let the program
 (auto generate (using rand()) the elements of the array).
 (After a few leftover messages, you should see what the program calculated as median)
+
+Validation:
+----------
 (if validation is enabled (it is by default -- should be disabled for perf tests), then
 (a validated median is also displayed -- (fingers crossed :), they should match).
+
+Sample output: 
+--------
+
+<<BEGIN SAMPLE OUTPUT>>
+pranit@pranit-ThinkPad-S1-Yoga:~/median-project$ ./Median_Engine 
+please enter number of nodes
+3
+please enter number of elements or size (all arrays will be same size)
+11
+You have entered 3 Nodes
+You have entered each array with 11 number of elements
+
+There are two options to enter elements: manually (Y below) or autoGenerate (N below) (arrays will be printed to stdout)
+
+Would you like to enter elements of each array (Y/N)?
+n
+autoGenerate will enter elements of each array
+
+elements of 1 array
+62  97  -40  -94  -64  -74  -3  -85  64  0  93  
+elements of 2 array
+2  65  42  26  -3  23  89  51  55  10  87  
+elements of 3 array
+66  -56  21  45  81  -82  94  -74  32  85  17  
+
+
+Calculating median.....
+
+  median found is 26.000000
+
+  Validated Median found is 26.000000
+
+ STATS
+
+ -----
+
+ InterNode messages passed (TODO: Dependency on ReadAheadCache) 0
+
+ Was Median of Medians used = 0
+
+ Final Array standings...
+
+
+elements of 1 array
+-74  -82  -40  -94  -64  -74  -3  -85  -56  0  10  
+elements of 2 array
+2  -3  17  21  23  26  32  42  55  93  87  
+elements of 3 array
+66  64  89  45  81  97  94  62  65  85  51  
+
+pranit@pranit-ThinkPad-S1-Yoga:~/median-project$ make clean 
+rm -f *.o Median_Engine core
+
+<<END SAMPLE OUTPUT>>
+
 
 
 Assumptions:
@@ -31,6 +91,16 @@ Goals:
 * memory : O(1) (other than memory for existing array's) 
 * efficient (batch) exchange of information & numbers between nodes
 * eliminate tail recursion (if it applies)
+
+TODO: 
+----
+
+These two are very important parts of this project; however due to extentuating circumstances they are not complete yet.
+ReadAheadCache (or ReadBehind) will demonstrate how internode communication can be minimized. The cache must distinguish 
+between clean and dirty cache entries during time of flush.
+
+* ReadAheadCache (60% complete)
+* statistics generator (10% complete)
 
 	
 Our approach:
@@ -63,6 +133,8 @@ quickselect:
 quickselect is a selection algorithm to find the kth smallest element in an unordered list. It is related to the quicksort sorting algorithm. Like quicksort, it is efficient in practice and has good average-case performance (O(n)), but has poor worst-case performance. Quickselect and its variants are the selection algorithms most often used in efficient real-world implementations (courtesy: wikipedia) 
 
 quickselect is an in-place algorithm which helps with memory constraints here; also eliminating tail recursion helps. We won't describe quickselect in detail since its readily availiable.
+
+we will use the median of three partitioning method. Choosing the median of the first, middle amd final element as the partioning element and cutting off the recursion can improve the performance. This method is a simple example of a probablistic algorithm -- one that uses randomness to achieve good performance wit high probability.
 
 Therefore, if we notice falling into degenerate quickselect behaviour (O(n^2)), then we will switch to median of medians.
 
