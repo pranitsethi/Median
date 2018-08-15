@@ -175,13 +175,14 @@ we will use the median of three partitioning method. Choosing the median of the 
 
 Therefore, if we notice falling into degenerate quickselect behaviour (O(n^2)), then we will switch to median of medians.
 
-TODO: 
 quickSelect (median-of -three)
  * median-of-three with a cutoff for small subfiles/arrays
  * can improve the running time of quicksort/select by 20 to 25 percent
 
 median-of-medians:
 -- 
+
+Note: There will be cases when median of medians will provide *approximately* the closest median element. Median of medians will be our last resort and usually discouraged. This increases internode communication and unless specifically specified, will confuse the read ahead cache (due to fetching an element every 5 (or 7 or 9) elements). Our goal is to use quickSelect under almost every circumstance.
 
 the median of medians is an approximate (median) selection algorithm, frequently used to supply a good pivot for an exact selection algorithm, mainly the quickselect, that selects the kth largest element. Median of medians finds an approximate median in linear time only, which is limited but an additional overhead for quickselect. When this approximate median is used as an improved pivot, the worst-case complexity of quickselect reduces significantly from quadratic to linear, which is also the asymptotically optimal worst-case complexity of any selection algorithm (courtesy: wikipedia)
 
@@ -194,8 +195,6 @@ Introselect works by optimistically starting out with quickselect and only switc
     :Sum the size of all partitions generated so far. If this exceeds the list size times some small positive constant k, switch to the worst-case linear algorithm. This sum is easy to track in a single scalar variable.
 
 Both approaches limit the recursion depth to k ⌈log n⌉ = O(log n) and the total running time to O(n).
-
-
 
 Internode communication: 
 -----------------------

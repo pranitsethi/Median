@@ -114,9 +114,9 @@ DistributedArrayManager::findMedian()
 		return qs_median;
 
 	// median of medians
-	vector<myssize_t> dummyVector;
+	vector<myssize_t> dvector; // since our data is in arrays
 	mysize_t median = getTotalElements()/2; 
-	return distributedMedian->medianOfMedians(dummyVector, median, 0, getTotalElements() - 1);
+	return distributedMedian->medianOfMedians(dvector, median, 0, getTotalElements() - 1);
 }
 
 double
@@ -610,7 +610,6 @@ DistributedMedian::medianOfMediansFinal(vector<myssize_t>& vec, mysize_t k, mysi
 		}
 		else{
 			insertionSortDistributed(i, i+5);
-
 			medians.push_back(dam->getElementAtIndex(i+2));
 		}
 	}
@@ -686,7 +685,7 @@ int main(int argc, char **argv)
 	myssize_t numNodes, numElements;
 	printf("please enter number of nodes and hit enter\n");
         char sep;
-        if (scanf("%u%c", &numNodes, &sep) != 2 || sep != '\n') {
+        if (scanf("%d%c", &numNodes, &sep) != 2 || sep != '\n') {
 	    printf("bad input (positive integers expected)\n");
             return -1;
         }
@@ -768,8 +767,8 @@ int main(int argc, char **argv)
 #ifdef STATS_ENABLED
 	printf("\n STATS\n"); 
 	printf("\n -----\n"); 
-	printf("\n * InterNode messages passed (ReadAheadCache is enabled) %d\n", Dam->getInterNodeMessages()); 
-	printf("\n * Cache Hits  %d\n", Dam->getCacheHits()); 
+	printf("\n * InterNode messages passed (ReadAheadCache is enabled)  = %d\n", Dam->getInterNodeMessages()); 
+	printf("\n * Cache Hits =  %d\n", Dam->getCacheHits()); 
 	printf("\n * Was Median of Medians used = %d\n", Dam->momUsed()); 
 	//printf("\n run time %d\n", dam->runTime());  // TODO
 #endif

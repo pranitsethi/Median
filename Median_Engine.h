@@ -63,7 +63,7 @@ class DistributedMedian {
 	DistributedArrayManager* dam;
 	InterNodeFlushManager*   infm;
 
-	const mysize_t cutoff = 3; // switches to median of medians
+	const mysize_t cutoff = 13; // small positive constant: switches to median of medians
 	const mysize_t diffIndex = 3; // && switches to median of medians
 	mysize_t  lastPivotIndex;
 	mysize_t  progressCount;
@@ -199,7 +199,7 @@ class ReadAheadCache {
 
 
 	// memory threshold (LRU eviction policy)
-	const mysize_t MEM_THRESH = 10; // tweak: how much memory is availiable?
+	const mysize_t MEM_THRESH = 100; // tweak: how much memory is availiable?
 	DistributedArrayManager* dam;
 	InterNodeFlushManager* infm;
 
