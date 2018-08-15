@@ -20,13 +20,14 @@ Sample output:
 --------
 
 <<BEGIN SAMPLE OUTPUT>>
+
 pranit@pranit-ThinkPad-S1-Yoga:~/median-project$ ./Median_Engine 
 please enter number of nodes
-3
-please enter number of elements or size (all arrays will be same size)
 11
-You have entered 3 Nodes
-You have entered each array with 11 number of elements
+please enter number of elements or size (all arrays will be same size)
+15
+You have entered 11 Nodes
+You have entered each array with 15 number of elements
 
 There are two options to enter elements: manually (Y below) or autoGenerate (N below) (arrays will be printed to stdout)
 
@@ -35,24 +36,42 @@ n
 autoGenerate will enter elements of each array
 
 elements of 1 array
-62  97  -40  -94  -64  -74  -3  -85  64  0  93  
+62  97  -40  -94  -64  -74  -3  -85  64  0  93  2  65  42  26  
 elements of 2 array
-2  65  42  26  -3  23  89  51  55  10  87  
+-3  23  89  51  55  10  87  66  -56  21  45  81  -82  94  -74  
 elements of 3 array
-66  -56  21  45  81  -82  94  -74  32  85  17  
+32  85  17  -79  16  78  20  7  18  -35  32  -8  92  -22  59  
+elements of 4 array
+-36  -83  -37  -18  45  60  -31  -22  -93  -93  -24  -19  13  -29  -96  
+elements of 5 array
+16  80  -17  10  43  -72  17  40  60  -84  -49  38  -67  -80  -7  
+elements of 6 array
+86  9  35  74  85  -74  63  -69  77  47  -37  -18  -78  -47  -70  
+elements of 7 array
+99  63  -61  7  -98  -41  77  -87  -55  -82  54  -79  33  -19  66  
+elements of 8 array
+68  92  -27  32  95  -65  -13  -44  -9  -7  28  -52  -48  75  -22  
+elements of 9 array
+-93  20  66  36  4  -38  -76  10  0  94  -26  -17  -8  32  89  
+elements of 10 array
+52  29  -38  50  55  -97  62  67  32  78  54  -59  3  -17  10  
+elements of 11 array
+23  80  -41  18  45  -8  -91  -2  -4  -14  -14  43  11  3  52  
 
 
 Calculating median.....
 
-  median found is 26.000000
+  median found is 9.000000
 
-  Validated Median found is 26.000000
+  Validated Median found is 9.000000
 
  STATS
 
  -----
 
- InterNode messages passed (TODO: Dependency on ReadAheadCache) 0
+ * InterNode messages passed (ReadAheadCache is enabled) 88 
+
+ * Cache Hits  1019
 
  Was Median of Medians used = 0
 
@@ -60,14 +79,29 @@ Calculating median.....
 
 
 elements of 1 array
--74  -82  -40  -94  -64  -74  -3  -85  -56  0  10  
+-72  -69  -40  -94  -64  -74  -76  -85  -38  -93  -22  -48  -52  -44  -65  
 elements of 2 array
-2  -3  17  21  23  26  32  42  55  93  87  
+-27  -38  -19  -79  -82  -55  -87  -97  -56  -41  -98  -91  -82  -61  -74  
 elements of 3 array
-66  64  89  45  81  97  94  62  65  85  51  
+-70  -47  -78  -79  -18  -37  -59  -74  -17  -35  -80  -67  -41  -22  -49  
+elements of 4 array
+-36  -83  -37  -18  -84  -26  -31  -22  -93  -93  -24  -19  -17  -29  -96  
+elements of 5 array
+-17  -2  3  -14  3  -8  -8  0  -3  -3  -13  2  -8  -9  -7  
+elements of 6 array
+-7  -4  0  -14  4  7  7  9  10  18  18  16  17  10  20  
+elements of 7 array
+11  10  17  16  23  21  10  13  20  23  54  51  33  52  55  
+elements of 8 array
+50  45  62  32  29  26  32  42  32  45  28  47  54  52  43  
+elements of 9 array
+35  32  32  36  38  59  45  60  40  60  43  55  62  66  89  
+elements of 10 array
+75  95  92  68  66  77  63  67  99  78  77  63  85  74  86  
+elements of 11 array
+80  80  92  78  85  94  81  66  87  89  65  93  64  97  94  
 
-pranit@pranit-ThinkPad-S1-Yoga:~/median-project$ make clean 
-rm -f *.o Median_Engine core
+pranit@pranit-ThinkPad-S1-Yoga:~/median-project$ 
 
 <<END SAMPLE OUTPUT>>
 
@@ -80,8 +114,11 @@ Assumptions:
 * Inter-node communication cost is high (i.e. should be avoided)
 * duplicates are possible
 * no idea about range of numbers
-* numbers are signed integers
+* numbers are signed integers (easily switchable to floats)
 * almost no extra memory availiable on nodes (other than to hold the arrays)
+* we intend for all indexes to a node to be packaged into a message (subject to the transport protocol)
+  and count as one inter node message (batched mode)
+
 
 Goals: 
 ------
@@ -90,7 +127,7 @@ Goals:
 * run time: O(n) (worst case)
 * memory : O(1) (other than memory for existing array's) 
 * efficient (batch) exchange of information & numbers between nodes
-* eliminate tail recursion (if it applies)
+* efficient algorithms: linear run time (worst case). Also improvements such as median-of-three partioning and eliminate tail recursion etc.
 
 TODO: 
 ----
@@ -174,7 +211,13 @@ class InterNodeFlushManager;
 Also there seems a need of an DistributedArrayManager to keep track of all the arrays and manage them, as if to look like one big array. That is, make the diferent nodes and arrays look seamless to the algorithm. Present the size as a summation of all the arrays.
 class DistributedArrayManager;
 
-A read ahead cache to pull elements in batches from a node (TODO: implementation)
+A read ahead cache to pull elements in batches from a node (TODO: LRU eviction)
+
+    std::vector<std::tuple<mysize_t, myssize_t, bool>> ev; // bool => dirty bit
+
+This tuple contains an element <element, index, bool> in the cache. The dirty bit indicates to the flush manager
+whether it needs to be written out.
+
 
 Important (details): 
   -- cache coherency
@@ -183,8 +226,9 @@ Important (details):
 
 Statistics: 
   -- With the Read Ahead Cache we can get an idea of how many inter node messages were sent. 
-  -- inter node flush manager will also tell us messages passes (write/flush messages) 
-  -- Others?
+  -- inter node flush manager will also tell us messages passed (write/flush messages) 
+     -- TODO: flush to recognize it's own node and not increment inter node messages passed
+  -- cache hits (when internode messaging was avoided due to the read ahead/behind)
 
 
 

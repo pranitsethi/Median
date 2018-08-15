@@ -47,7 +47,7 @@ class ReadAheadCache;
 class Validation { 
 
 	public:
-		bool static validateInputs(mysize_t N, mysize_t elementCount);
+		bool static validateInputs(myssize_t N, myssize_t elementCount);
 };
 
 /* 
@@ -102,6 +102,7 @@ class DistributedArrayManager {
 	ReadAheadCache*  rac;
 #ifdef STATS_ENABLED
 	mysize_t  InterNodeMessages;
+	mysize_t  cacheHits;
 #endif
 
 
@@ -123,7 +124,9 @@ class DistributedArrayManager {
 	double    findMedian();
 #ifdef STATS_ENABLED
 	bool      momUsed() { return !distributedMedian->didQSComplete(); }
-	bool      getInterNodeMessages() { return InterNodeMessages; }
+	mysize_t  getInterNodeMessages() { return InterNodeMessages; }
+	void      incrInterNodeMessages() { ++InterNodeMessages; }
+	mysize_t  getCacheHits() { return cacheHits; }
 #endif
 
 #ifdef VALIDATION_ENABLED
@@ -145,22 +148,26 @@ class DistributedArrayManager {
 
 class InterNodeFlushManager { 
 
-	// this object manaages communication amidst the nodes
-	// however in a batched fashion so to minmize the need to 
-	// hit the wire
+	/* this object manaages communication amidst the nodes
+	 * however in a batched fashion so to minmize the need to 
+	 * hit the wire
 
-	// each node has one of these to accrue changes to be sent to every other node (if required)
+         * Messages to a node: 
+	 * each node has one of these to accrue changes to be sent to every other node
+         * we intend for all indexes to a node to be packaged into a message (subject to the transport protocol)
+         * and count as one inter node message (batched mode) 
 
-	/* 
+	 * 
 	 * BatchInfo collects and manages the element information to be flushed by the flush manager 
-	 *
+	 * tuple<..,.., bool dirty> => captures the an element (<element, index, bool>) in the cache.
+         * a very simple cache representation is shown here
 	 */
 	class BatchInfo { 
 
 		public:
 			BatchInfo* next; 
 			mysize_t Node; 
-			std::vector<std::pair<mysize_t, myssize_t>> ev; 
+			std::vector<std::tuple<mysize_t, myssize_t, bool>> ev; // bool => dirty bit
 			mysize_t getSize() { return ev.size(); }
 			BatchInfo(mysize_t n): next(NULL), Node(n) {}   // next == NULL for the simpler approach
 	};
@@ -173,7 +180,7 @@ class InterNodeFlushManager {
 	void flush(); // method which sends the information to nodes in batched form
 	void swapValues(mysize_t src_index, mysize_t dest_index); // async: queues it up and passes a batch message eventually
 	// Note: ReadAheadCache (queuePair to implement LRU eviction)
-	void queuePair(mysize_t index, myssize_t element);
+	void queuePair(mysize_t index, myssize_t element, bool dirty);
 	bool checkCache(mysize_t index, myssize_t& element);
 
 };
@@ -185,9 +192,7 @@ class InterNodeFlushManager {
  * if present than make a trip to the node. If it does need to go out to the node, then it'll bring 
  * N elements to cache. We can implement a LRU cache eviction.
  * For cache and element coherency, the element must be removed (or updated) from here if it's swapped
- * or some other action and moved to the InterNodeFlushManager cache. Combining the two (ReadAheadCache and
- * InterNodeFlushManager) is a possiblity but it might lead to complications and complicated logic (for starters
- * would need a state bit to identify whether an element is dirty to be picked up by the flush manager)
+ * or some other action and moved to the InterNodeFlushManager cache.
  */
 
 class ReadAheadCache {
@@ -207,5 +212,9 @@ class ReadAheadCache {
 
 
 // TODO
-// read ahead cache (getElementAtIndex(x)): constraint (memory on controller node: memory threshold)
-// statisic generator (InterNode messages: dependency on read ahead cache :() 
+// LRU eviction (memory threshold)
+// advanced read ahead cache (use a pattern algorithm (ala machine learning) to fetch the right elements.
+// statisic generator (collect more stats)
+// -- TODO(minor): flush to recognize it's own node and not increment inter node messages passed
+//  --TODO(minor): similarly for the read ahead cache (don't count internode messages if running on the same node)
+// profiling

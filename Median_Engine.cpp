@@ -11,10 +11,10 @@
 using namespace std;
 
 bool 
-Validation::validateInputs(mysize_t Nodes, mysize_t arraySize) 
+Validation::validateInputs(myssize_t Nodes, myssize_t arraySize) 
 {
-        // method to reject bad inputs 
-	if (!Nodes) {
+	// method to reject bad inputs 
+	if (!Nodes || Nodes < 0) {
 
 		printf("You have entered %d node\n", Nodes); 
 		printf("We need at least 1 to continue; please try again\n");
@@ -29,7 +29,7 @@ Validation::validateInputs(mysize_t Nodes, mysize_t arraySize)
 		printf("You have entered %d Nodes\n", Nodes); 
 	}
 
-	if (!arraySize) {
+	if (!arraySize || arraySize < 0) {
 
 		printf("You have entered %d size array\n", arraySize); 
 		printf("We need at least 1 element in each array to continue; please try again\n");
@@ -55,8 +55,8 @@ DistributedArrayManager::DistributedArrayManager(mysize_t Nodes, mysize_t numEle
 
 	nodesArray = new myssize_t*[numNodes];
 	if (!nodesArray) { 
-        	printf("\nallocation failure (nodesArray)\n");
-                return; 
+		printf("\nallocation failure (nodesArray)\n");
+		return; 
 	}
 
 	for (mysize_t i = 0; i < Nodes; ++i) 
@@ -64,8 +64,8 @@ DistributedArrayManager::DistributedArrayManager(mysize_t Nodes, mysize_t numEle
 		// create numNodes arrays 
 		nodesArray[i] = new myssize_t[numElements]; 
 		if (!nodesArray[i]) { 
-        	   printf("\nallocation failure (nodesArray i %d)\n", i);
-                   return; 
+			printf("\nallocation failure (nodesArray i %d)\n", i);
+			return; 
 		}
 	}
 
@@ -74,13 +74,18 @@ DistributedArrayManager::DistributedArrayManager(mysize_t Nodes, mysize_t numEle
 	distributedMedian = new DistributedMedian(this, infm);
 	rac = new ReadAheadCache(this, infm);
 
+#ifdef STATS_ENABLED
+	InterNodeMessages = 0 ;
+	cacheHits = 0;
+#endif
+
 }
 
 void
 DistributedArrayManager::printAllArrays() 
 {
 
-        // prints the current state of the distributed arrays
+	// prints the current state of the distributed arrays
 
 	for (mysize_t n = 0; n < numNodes; n++) {
 		printf("\nelements of %d array\n", n + 1);
@@ -96,11 +101,11 @@ DistributedArrayManager::findMedian()
 {
 
 	// finds the median either via quickSelect or median of medians
-        // by default uses quickSelect uses the iterative approach.
-        // the recursive method is coded but commented out (don't blow the stack fears!)
+	// by default uses quickSelect uses the iterative approach.
+	// the recursive method is coded but commented out (don't blow the stack fears!)
 
-        // very basic algorithm is developed to monitor progress of quickSelect. If it isn't
-        // found sufficient, then switch over to median of medians for worst-case linear runtime.
+	// very basic algorithm is developed to monitor progress of quickSelect. If it isn't
+	// found sufficient, then switch over to median of medians for worst-case linear runtime.
 
 	//distributedMedian->quickSelectRecursive(0, totalElements -1, totalElements/2);
 	//double qs_median = distributedMedian->checkForMedian(totalElements/2);
@@ -118,9 +123,9 @@ double
 DistributedArrayManager::validateMedian()
 {
 
-       // median validation method (DEBUG ONLY)
-       // used to validate the median found via either of the algorithms over
-       // the distributed data.
+	// median validation method (DEBUG ONLY)
+	// used to validate the median found via either of the algorithms over
+	// the distributed data.
 
 	sort(medianValidate.begin(), medianValidate.end());
 	if (totalElements % 2 == 0) { 
@@ -136,10 +141,10 @@ DistributedArrayManager::validateMedian()
 void 
 DistributedArrayManager::setElementFlush(mysize_t index, myssize_t element) 
 {
-        // bypasses the cache and directly writes to the node. 
-        // probably used by a batch flush 
-        // A batch message is created and all (dirty) elements for that node
-        // are sent as one message.  
+	// bypasses the cache and directly writes to the node. 
+	// probably used by a batch flush 
+	// A batch message is created and all (dirty) elements for that node
+	// are sent as one message.  
 	myssize_t* nArray = nodesArray[getNode(index)]; 
 	mysize_t rindex = index - getNode(index) * numElementsPerArray; 
 	nArray[rindex] = element; 
@@ -149,9 +154,9 @@ void
 DistributedArrayManager::setElement(mysize_t index, myssize_t element)
 {
 	// ONLY sets the cache (normal operation mode)
-        // flush manager will clean it eventually (or it may be updated in-place
-        // and that saves another update which would have happened otherwise)
-	infm->queuePair(index, element);
+	// flush manager will clean it eventually (or it may be updated in-place
+	// and that saves another update which would have happened otherwise)
+	infm->queuePair(index, element, true); // dirty == true
 }
 
 myssize_t 
@@ -164,13 +169,17 @@ DistributedArrayManager::getElement(mysize_t index)
 	myssize_t element;
 	if (infm->checkCache(index, element)) { 
 		// found in the cache
+#ifdef STATS_ENABLED
+		++cacheHits;
+#endif
 		return element;
 	}
 
-	// TODO: ReadAheadCache->fetchElements(bool forward, bool backward); (uno internode message)
+	// ReadAheadCache->fetchElements(bool forward, bool backward); (uno internode message)
 	// Now the element and its neighbours are in the cache (these elements are in clean state)
-	// clean: don't need to be flushed back to the node (can be discarded by LRU)
+	// clean: don't need to be flushed back to the node (can be discarded by LRU: LRU TODO)
 	// get it from the cache now
+	rac->fetchElements(index, true, true);
 
 	myssize_t* nArray = nodesArray[getNode(index)]; 
 	mysize_t rindex = index - getNode(index) * numElementsPerArray; 
@@ -186,9 +195,6 @@ DistributedArrayManager::getElementNoCache(mysize_t index)
 	// clean: don't need to be flushed back to the node (can be discarded by LRU)
 	// get it from the cache now
 
-#ifdef STATS_ENABLED
-	++InterNodeMessages;
-#endif 
 
 	myssize_t* nArray = nodesArray[getNode(index)]; 
 	mysize_t rindex = index - getNode(index) * numElementsPerArray; 
@@ -199,22 +205,24 @@ InterNodeFlushManager::InterNodeFlushManager(DistributedArrayManager* d) : dam(d
 {
 
 
-       // this object runs the flushing of dirty entries in the cache to their respective nodes.
-       // A batched message is created to send all the dirty entries in one message for a particular
-       // node.
+	// this object runs the flushing of dirty entries in the cache to their respective nodes.
+	// A batched message is created to send all the dirty entries in one message for a particular
+	// node.
 
 	mysize_t nodes = dam->getNumNodes();
 	//BatchNodes = new BatchInfo**[nodes]; // Time permitting; more elaborate per node BatchNode
 	BatchNodes = new BatchInfo*[nodes];
 	if (!BatchNodes) {
-		// TODO: deal with the error
+		printf("Unable to allocate BatchedNode\n");
+		return; // TODO: pass status as arg
 	}
 
 	for (mysize_t i = 0; i < nodes; ++i) { 
 
 		BatchNodes[i] = new BatchInfo(i);
 		if (!BatchNodes[i]) {
-			// TODO: deal with the error
+			printf("Unable to allocate BatchedNode[]\n");
+			return; // TODO: pass status as arg
 		}
 	}
 
@@ -255,8 +263,8 @@ InterNodeFlushManager::swapValues(mysize_t index1, mysize_t index2)
 	printf("swapValues: got values element1 %d, element2 %d\n", element1, element2);
 #endif
 
-	queuePair(index2, element1); // indexes and values swapped
-	queuePair(index1, element2);
+	queuePair(index2, element1, true); // indexes and values swapped
+	queuePair(index1, element2, true); // dirty = true
 
 }
 
@@ -264,20 +272,20 @@ bool
 InterNodeFlushManager::checkCache(mysize_t index, myssize_t& element)
 {
 
-        // this is the read path (getElementXX) -- always check the cache first
-        // there might be an updated copy sitting dirty in the cache.
+	// this is the read path (getElementXX) -- always check the cache first
+	// there might be an updated copy sitting dirty in the cache.
 
 	mysize_t node = dam->getNode(index);
-	vector<std::pair<mysize_t, myssize_t>>::iterator it;
+	vector<std::tuple<mysize_t, myssize_t, bool>>::iterator it;
 	for (it = BatchNodes[node]->ev.begin(); it != BatchNodes[node]->ev.end(); ++it) {
 
-		if (it->first == index) { 
+		if (std::get<0>(*it) == index) { 
 			// found the pair in the list
 			// there can only be one such pair for that index in the list
 #ifdef DEBUG_ENABLED
-			printf("queuePair: found check index %d, element %d, node %d, szv %lu\n", it->first, it->second, node, BatchNodes[node]->ev.size()); 
+			printf("queuePair: found check index %d, element %d, node %d, szv %lu\n", get<0>(*it), get<1>(*it), node, BatchNodes[node]->ev.size()); 
 #endif
-			element = it->second;
+			element = get<1>(*it);
 			return true;
 		}
 	}
@@ -285,10 +293,10 @@ InterNodeFlushManager::checkCache(mysize_t index, myssize_t& element)
 }
 
 void
-InterNodeFlushManager::queuePair(mysize_t index, myssize_t element)
+InterNodeFlushManager::queuePair(mysize_t index, myssize_t element, bool dirty)
 {
 
-	// TODO Note: ReadAheadCache (queuePair to implement LRU eviction)
+	// Note: ReadAheadCache (queuePair to implement LRU eviction)
 	// might need to internally call flush()i -- if elements are dirty?
 
 
@@ -297,27 +305,29 @@ InterNodeFlushManager::queuePair(mysize_t index, myssize_t element)
 
 	mysize_t node = dam->getNode(index);
 	bool found = false; 
-	vector<std::pair<mysize_t, myssize_t>>::iterator it;
+	vector<std::tuple<mysize_t, myssize_t, bool>>::iterator it;
 	for (it = BatchNodes[node]->ev.begin(); it != BatchNodes[node]->ev.end(); ++it) {
 
-		if (it->first == index) { 
+		if (get<0>(*it) == index) { 
 			// found the pair in the list; just update it (saves memory)
 #ifdef DEBUG_ENABLED
-			printf("queuePair: found index %d, element %d, node %d, szv %lu\n", it->first, it->second, node, BatchNodes[node]->ev.size()); 
+			//printf("queuePair: found index %d, element %d, node %d, szv %lu\n", it->first, it->second, node, BatchNodes[node]->ev.size()); 
+			printf("queuePair: found index %d, element %d, node %d, szv %lu\n", get<0>(*it), get<1>(*it), node, BatchNodes[node]->ev.size()); 
 			printf("queuePair: Updated to index %d, element %d, node %d, szv %lu\n", index, element, node, BatchNodes[node]->ev.size()); 
 #endif
-			it->second = element; 
+			//it->second = element; 
+			get<1>(*it) = element; 
 			found = true;
 			break;
 		}
 	}
 
 	if (!found)
-		BatchNodes[node]->ev.push_back(std::make_pair(index, element));
+		BatchNodes[node]->ev.push_back(std::tuple<mysize_t, myssize_t, bool>(index, element, dirty));
 
 
 #ifdef DEBUG_ENABLED
-	printf("queuePair: index %d, element %d, node %d, szv %lu\n", index, element, node, BatchNodes[node]->ev.size());  // TODO: REMOVE
+	printf("queuePair: index %d, element %d, node %d, szv %lu\n", index, element, node, BatchNodes[node]->ev.size());
 #endif
 }
 
@@ -332,18 +342,26 @@ InterNodeFlushManager::flush()
 	int nodes = dam->getNumNodes();
 	for(int n = 0; n < nodes; ++n) 
 	{
-		vector<std::pair<mysize_t, myssize_t>>::iterator it;
-		while (BatchNodes[n]->ev.size())
+		vector<std::tuple<mysize_t, myssize_t, bool>>::iterator it;
+		it = BatchNodes[n]->ev.begin();
+		for(mysize_t i = 0;  i < BatchNodes[n]->ev.size(); ++i, ++it)
 		{
-			it = BatchNodes[n]->ev.begin();
 			// this encapsulates a message for all data and sends it to node 'n'
 			// a worker recieves the message and then swaps in the new values (local)
-			// TODO: would also update the readAheadCache eventually (or only that if under memory threshold)
-			//printf("flush found index %d, element %d, node %d, szv %lu\n", it->first, it->second, n, BatchNodes[n]->ev.size()); 
-			dam->setElementFlush(it->first, it->second);
-			BatchNodes[n]->ev.erase(BatchNodes[n]->ev.begin());
+			// TODO: LRU eviction
+#ifdef DEBUG_ENABLED
+			printf("flush found index %d, element %d, node %d, szv %lu\n", it->first, it->second, n, BatchNodes[n]->ev.size()); 
+#endif
+			if (get<2>(*it) == true) {
+				dam->setElementFlush(get<0>(*it), get<1>(*it)); // TODO: Add dirty check
+				get<2>(*it) = false; // turn off the dirty bit in the cache
+			}
 		}
-		assert(BatchNodes[n]->ev.size() == 0);
+#ifdef STATS_ENABLED
+        // we intend for all indexes to a node  to be packaged into a message (subject to the transport protocol)
+        // and count as one inter node message (batched mode)
+		dam->incrInterNodeMessages();
+#endif
 	}
 }
 
@@ -351,9 +369,9 @@ void
 DistributedMedian::insertionSortDistributed(mysize_t left, mysize_t right)
 {
 
-        // this method is customized to run on the distributed data. 
-        // such methods will greatly be helped with the Read Ahead Cache.
-        // used during median of medians or to finish out small sized data.
+	// this method is customized to run on the distributed data. 
+	// such methods will greatly be helped with the Read Ahead Cache.
+	// used during median of medians or to finish out small sized data.
 
 	mysize_t i;
 	for(i = right; i > left; i--) compexch(i-1, i);
@@ -366,15 +384,15 @@ DistributedMedian::insertionSortDistributed(mysize_t left, mysize_t right)
 	infm->flush();
 }
 
-	bool
+bool
 DistributedMedian::checkQuickSelectProgress(mysize_t pivotIndex)
 {
 
-        // this method is extremely important.
-        // determines whether quickselect is making good progress. 
-        // a lot more thought can be put into this.
-        // as presently constructed, its trying to monitor how far dispersed
-        // subsequent pivotIndexes are.
+	// this method is extremely important.
+	// determines whether quickselect is making good progress. 
+	// a lot more thought can be put into this.
+	// as presently constructed, its trying to monitor how far dispersed
+	// subsequent pivotIndexes are.
 
 	myssize_t udiff  = pivotIndex - lastPivotIndex; 
 	mysize_t  diff = abs(udiff);
@@ -420,7 +438,7 @@ void
 DistributedMedian::compexch(mysize_t index1, mysize_t index2)
 {
 
-       // compare and exchange if condition is met.
+	// compare and exchange if condition is met.
 
 	if (dam->getElementAtIndex(index2) < dam->getElementAtIndex(index1))
 		exch(index1, index2);
@@ -431,14 +449,14 @@ mysize_t
 DistributedMedian::partition(mysize_t left, mysize_t right, myssize_t pivotElement) 
 {
 	// classic parition (around the pivot element)
-        // picks the right most element randomly to pivot around
-        // quickSelect (MEDIAN_THREE) by default is using median of three partioning 
-        // to set that last element.
+	// picks the right most element randomly to pivot around
+	// quickSelect (MEDIAN_THREE) by default is using median of three partioning 
+	// to set that last element.
 	mysize_t i = left - 1, j = right;
 	myssize_t v;
 
 	if (pivotElement) {
-                // mom supplies a pivot element
+		// mom supplies a pivot element
 		v = pivotElement;
 	} else {
 		// randomly chooses to partition with the last element
@@ -476,8 +494,8 @@ void
 DistributedMedian::quickSelectRecursive(mysize_t l, mysize_t r, mysize_t k) 
 {
 
-        // recursive quick select (Unused in the code)
-        // stack depth is always a point of concern (for me).
+	// recursive quick select (Unused currently in the code)
+	// stack depth is always a point of concern (for me).
 
 	if (r<= l) return;
 	mysize_t i = partition(l, r);
@@ -505,14 +523,14 @@ DistributedMedian::quickSelect()
 
 	while (right > left) {
 #ifdef MEDIAN_THREE
-                exch((left+right)/2, right -1);
-                compexch(left, right - 1);
-                compexch(left, right);
-                compexch(right - 1, right);
+		exch((left+right)/2, right -1);
+		compexch(left, right - 1);
+		compexch(left, right);
+		compexch(right - 1, right);
 #endif
 		mysize_t pivotIndex = partition(left, right);
 		if (checkQuickSelectProgress(pivotIndex)) // true return implies not good progress (possibly O(n^2))
-		  return 0; // this return value is meaningless
+			return 0; // will be ignored
 #ifdef DEBUG_ENABLED
 		printf("partition pivotIndex %d\n",pivotIndex); //TODO: DEBUG REMOVE
 #endif
@@ -528,7 +546,7 @@ double
 DistributedMedian::checkForMedian(mysize_t pivotIndex)
 {
 
-        // calculate median subject to number of total elements
+	// calculate median subject to number of total elements
 
 	if (dam->getTotalElements() % 2 == 0) { 
 		int i = dam->getElementAtIndex(pivotIndex - 1);
@@ -561,10 +579,10 @@ double
 DistributedMedian::medianOfMediansFinal(vector<myssize_t>& vec, mysize_t k, mysize_t start, mysize_t end, bool mom)
 {
 
-        // see README for a detailed breakdown on median of medians. 
-        // In a nutshell, attempt to find a pivot which will likely 
-        // split the data in near equal halves (best case); thus guaranteeing
-        // worst case linear time. 
+	// see README for a detailed breakdown on median of medians. 
+	// In a nutshell, attempt to find a pivot which will likely 
+	// split the data in near equal halves (best case); thus guaranteeing
+	// worst case linear time. 
 
 	// recursive method (watch out for the recursive depth here)
 	// (add bounds check (check stack size on stacking every new
@@ -635,22 +653,29 @@ ReadAheadCache::fetchElements(mysize_t index, bool forward, bool back)
 	mysize_t rindex = dam->getRelativeIndex(index);
 	mysize_t elArray = dam->getElementsPerArray();
 	mysize_t forward_index = (rindex + MEM_THRESH > elArray)? elArray - rindex : rindex + MEM_THRESH;
-	mysize_t back_index = (rindex - MEM_THRESH < 0)? rindex : rindex - MEM_THRESH;
+	mysize_t back_index = (rindex - MEM_THRESH < 0)? 0 : rindex - MEM_THRESH;
 
+#ifdef DEBUG_ENABLED
+	printf("fetchElements: fI %d, bi %d, ri %d\n", forward_index, back_index, rindex);
+#endif
+
+#ifdef STATS_ENABLED
+	dam->incrInterNodeMessages();
+#endif
 	if (forward) { 
 
 		// probably in partition where both side elements are needed
 		// TODO: heuristics
-                // how many elements do we want to bring to the cache?
+		// how many elements do we want to bring to the cache?
 		for (mysize_t i = 0; i < forward_index; ++i) { 
-			infm->queuePair(index + i , dam->getElementNoCache(index + i ));
+			infm->queuePair(index + i , dam->getElementNoCache(index + i ), false); // dirty = false
 		} 
 
 	}
 
 	if (back) { 
 		for (mysize_t i = rindex; i < back_index; --i) { 
-			infm->queuePair(index - 1, dam->getElementNoCache(index - i ));
+			infm->queuePair(index - i, dam->getElementNoCache(index - i ), false); // dirty = false
 		}
 	}
 }
@@ -658,11 +683,18 @@ ReadAheadCache::fetchElements(mysize_t index, bool forward, bool back)
 int main(int argc, char **argv) 
 {
 
-	mysize_t numNodes, numElements;
-	printf("please enter number of nodes\n"); 
-	scanf("%d", &numNodes);
-	printf("please enter number of elements or size (all arrays will be same size)\n"); 
-	scanf("%d", &numElements);
+	myssize_t numNodes, numElements;
+	printf("please enter number of nodes and hit enter\n");
+        char sep;
+        if (scanf("%u%c", &numNodes, &sep) != 2 || sep != '\n') {
+	    printf("bad input (positive integers expected)\n");
+            return -1;
+        }
+	printf("please enter number of elements of an array (all arrays will be same size), hit enter\n"); 
+        if (scanf("%u%c", &numElements, &sep) != 2 || sep != '\n') {
+	    printf("bad input (positive integers expected)\n");
+            return -1;
+        }
 	if (!Validation::validateInputs(numNodes, numElements)) 
 		return -1;
 
@@ -687,23 +719,26 @@ int main(int argc, char **argv)
 	if (ch == 'y' || ch == 'Y' ) {
 
 		printf("lets enter elements of each array\n");
-		for (mysize_t n = 0; n < numNodes; n++) {
-			printf("lets enter elements of %d array, space separated\n", n + 1);
-			mysize_t element;
-			for (mysize_t j = 0; j < numElements; ++j) {
-				scanf("%d", &element);
+		for (myssize_t n = 0; n < numNodes; n++) {
+			printf("lets enter %u elements of %d array, space separated\n", numElements, n + 1);
+			myssize_t element;
+			for (myssize_t j = 0; j < numElements; ++j) {
+                                char sep;
+                                if (scanf("%d%c", &element, &sep) !=2 || sep != ' ') {
+	                            printf("bad input (signed integers expected)\n");
+                                    return -1;
+                                }
 				Dam->setElementFlush( (n * numElements) + j, element);
 #ifdef VALIDATION_ENABLED
-				//Dam->medianValidate[vindex++] = element;
 				Dam->medianValidate.push_back(element);
 #endif
 			}
 		}
 	} else { 
 		printf("autoGenerate will enter elements of each array\n");
-		for (mysize_t n = 0; n < numNodes; n++) {
+		for (myssize_t n = 0; n < numNodes; n++) {
 			mysize_t element;
-			for (mysize_t j = 0; j < numElements; ++j) {
+			for (myssize_t j = 0; j < numElements; ++j) {
 				element = (17*rand() + 23) % 100;  // arbitrary: could be anything (including negative #s)
 				Dam->setElementFlush( (n * numElements) + j, element);
 #ifdef VALIDATION_ENABLED
@@ -733,8 +768,9 @@ int main(int argc, char **argv)
 #ifdef STATS_ENABLED
 	printf("\n STATS\n"); 
 	printf("\n -----\n"); 
-	printf("\n InterNode messages passed (TODO: Dependency on ReadAheadCache) %d\n", Dam->getInterNodeMessages()); 
-	printf("\n Was Median of Medians used = %d\n", Dam->momUsed()); 
+	printf("\n * InterNode messages passed (ReadAheadCache is enabled) %d\n", Dam->getInterNodeMessages()); 
+	printf("\n * Cache Hits  %d\n", Dam->getCacheHits()); 
+	printf("\n * Was Median of Medians used = %d\n", Dam->momUsed()); 
 	//printf("\n run time %d\n", dam->runTime());  // TODO
 #endif
 
