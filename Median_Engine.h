@@ -11,7 +11,6 @@
 #include <vector>
 #include <memory>
 #include <iostream>
-#include <hiredis/hiredis.h>
 #include <map>
 #include <list>
 #include <unistd.h>
